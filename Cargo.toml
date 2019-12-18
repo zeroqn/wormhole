@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 quinn = { git = "https://github.com/zeroqn/quinn", branch = "expose-certificate" }
+quinn-proto = { git = "https://github.com/zeroqn/quinn", branch = "expose-certificate" }
 thiserror = "1.0.9"
 creep = "0.1.1"
 parity-multiaddr = "0.6.0"
@@ -19,3 +20,4 @@ async-trait = "0.1.21"
 anyhow = "1.0.25"
 log = "0.4.8"
 derive_more = "0.99.2"
+tokio = { version = "0.2.4", features = ["rt-core", "rt-threaded", "time", "macros"] }

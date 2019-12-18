@@ -1,5 +1,5 @@
-use super::{CapableConn, QuicMuxedStream, RESET_ERR_CODE, Transport};
-use crate::{PeerId, PublicKey, multiaddr::{MultiaddrExt, Multiaddr}};
+use super::{CapableConn, QuicMuxedStream, RESET_ERR_CODE, QuicTransport, Transport};
+use crate::{PeerId, PublicKey, multiaddr::Multiaddr};
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -9,20 +9,27 @@ use quinn::{Connection, ConnectionError, IncomingBiStreams};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 #[derive(Clone)]
-pub struct QuicConn<Transport> {
+pub struct QuicConn {
     conn: Connection,
     bi_streams: Arc<Mutex<IncomingBiStreams>>,
     is_closed: Arc<AtomicBool>,
-    transport: Transport,
-    
+    transport: QuicTransport,
+
     local_pubkey: PublicKey,
     remote_pubkey: PublicKey,
+    remote_multiaddr: Multiaddr,
+}
+
+impl QuicConn {
+    pub fn new(conn: Connection, bi_streams: IncomingBiStreams, transport: QuicTransport, local_pubkey: PublicKey) -> Self {
+        unimplemented!()
+    }
 }
 
 #[async_trait]
-impl<T: Transport> CapableConn for QuicConn<T> {
+impl CapableConn for QuicConn {
     type MuxedStream = QuicMuxedStream;
-    type Transport = T;
+    type Transport = QuicTransport;
 
     async fn open_stream(&self) -> Result<Self::MuxedStream, Error> {
         let (send, read) = self.conn.open_bi().await?;
@@ -50,7 +57,7 @@ impl<T: Transport> CapableConn for QuicConn<T> {
     async fn close(&self) -> Result<(), Error> {
         self.is_closed.store(true, Ordering::SeqCst);
         self.conn.close(RESET_ERR_CODE.into(), b"close");
-        
+
         Ok(())
     }
 
@@ -71,11 +78,7 @@ impl<T: Transport> CapableConn for QuicConn<T> {
     }
 
     fn remote_multiaddr(&self) -> Multiaddr {
-        let sock_addr = self.conn.remote_address();
-        let mut maddr = Multiaddr::quic_from_sock_addr(sock_addr);
-
-        maddr.push_peer_id(self.remote_peer());
-        maddr
+        self.remote_multiaddr.clone()
     }
 
     fn transport(&self) -> Self::Transport {

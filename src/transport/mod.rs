@@ -1,7 +1,12 @@
 pub mod capable_conn;
 pub mod muxed_stream;
+pub mod listener;
+pub mod transport;
 
 pub use muxed_stream::QuicMuxedStream;
+pub use capable_conn::QuicConn;
+pub use listener::QuicListener;
+pub use transport::QuicTransport;
 
 use crate::{PeerId, PublicKey};
 
@@ -53,13 +58,13 @@ pub trait CapableConn: Sync + Send + Clone {
 pub trait Listener: Send {
     type CapableConn;
 
-    async fn accept(&self) -> Result<Self::CapableConn, Error>;
+    async fn accept(&mut self) -> Result<Self::CapableConn, Error>;
 
-    async fn close(&self) -> Result<(), Error>;
+    async fn close(&mut self) -> Result<(), Error>;
 
     fn addr(&self) -> SocketAddr;
 
-    fn multiaddr(&self) -> &Multiaddr;
+    fn multiaddr(&self) -> Multiaddr;
 }
 
 #[async_trait]
