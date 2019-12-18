@@ -1,10 +1,12 @@
+pub mod muxed_stream;
+
 use crate::{PeerId, PublicKey};
 
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
 use parity_multiaddr::Multiaddr;
-use futures::{io::{AsyncRead, AsyncWrite}, Stream};
+use futures::prelude::{AsyncRead, AsyncWrite, Stream};
 use bytes::Bytes;
 
 use std::net::SocketAddr;
@@ -47,7 +49,7 @@ pub trait Listener: Send {
     type CapableConn;
 
     async fn accept(&self) -> Result<Self::CapableConn, Error>;
-    
+
     async fn close(&self) -> Result<(), Error>;
 
     fn addr(&self) -> SocketAddr;

@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-quinn = "0.5.2"
+quinn = { git = "https://github.com/zeroqn/quinn", branch = "expose-certificate" }
 thiserror = "1.0.9"
 creep = "0.1.1"
 parity-multiaddr = "0.6.0"
@@ -17,3 +17,4 @@ bytes = "0.5.3"
 ophelia = "0.1.0"
 async-trait = "0.1.21"
 anyhow = "1.0.25"
+log = "0.4.8"
