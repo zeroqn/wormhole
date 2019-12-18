@@ -1,12 +1,13 @@
-use super::MuxedStream;
+use super::{MuxedStream, RESET_ERR_CODE};
 
-use log::debug;
 use async_trait::async_trait;
 use bytes::Bytes;
+use derive_more::Constructor;
 use futures::{
     io,
     prelude::{AsyncRead, AsyncWrite, Stream},
 };
+use log::debug;
 use quinn::{RecvStream, SendStream};
 
 use std::{
@@ -14,8 +15,7 @@ use std::{
     task::{Context, Poll},
 };
 
-pub const RESET_ERR_CODE: u32 = 0;
-
+#[derive(Constructor)]
 pub struct QuicMuxedStream {
     read: RecvStream,
     send: SendStream,
