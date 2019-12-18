@@ -1,0 +1,19 @@
+[package]
+name = "wormhole"
+version = "0.1.0"
+authors = ["user"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+quinn = "0.5.2"
+thiserror = "1.0.9"
+creep = "0.1.1"
+parity-multiaddr = "0.6.0"
+parity-multihash = "0.2.0"
+futures = "0.3.1"
+bytes = "0.5.3"
+ophelia = "0.1.0"
+async-trait = "0.1.21"
+anyhow = "1.0.25"
