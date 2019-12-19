@@ -1,4 +1,4 @@
-use super::{QuicConn, QuicListener, Transport, QuicConfig};
+use super::{QuicConn, QuicListener, Transport, QuicConfig, QuinnConnectionExt};
 use crate::{multiaddr::{Multiaddr, MultiaddrExt}, crypto::{PeerId, PublicKey, PrivateKey}};
 use crate::tls::certificate::P2PSelfSignedCertificate;
 
@@ -16,9 +16,6 @@ pub enum TransportError {
 
     #[error("transport doesn't support this multiaddr `{0}`")]
     UndialableMultiaddr(Multiaddr),
-
-    #[error("wrong number of certs in chain, expect 1, got {0}")]
-    MoreThanOneCertificate(usize),
 
     #[error("connection peer id mismatch: expect {target}, got {connected}")]
     PeerMismatch{
@@ -91,13 +88,7 @@ impl Transport for QuicTransport {
             ..
         } = endpoint.connect(&sock_addr, "p2p")?.await?;
 
-        let peer_certs = connection.peer_der_certificates().expect("impossible, pass cert verifier without valid certificate");
-
-        if peer_certs.len() > 1 {
-            return Err(MoreThanOneCertificate(peer_certs.len()))?;
-        }
-
-        let peer_pubkey = P2PSelfSignedCertificate::recover_peer_pubkey(peer_certs[0].as_slice())?;
+        let peer_pubkey = connection.peer_pubkey()?;
 
         let connected_peer_id = peer_pubkey.peer_id();
         if connected_peer_id != peer_id {
