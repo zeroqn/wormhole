@@ -42,13 +42,14 @@ impl Listener for QuicListener {
         if self.incoming.is_none() {
             return Err(ListenerError::ClosedOrDriverLost)?;
         }
-
+        
         let incoming = self.incoming.as_mut().expect("impossible no incoming");
 
         let connecting = incoming
             .next()
             .await
             .ok_or(ListenerError::ClosedOrDriverLost)?;
+
         let NewConnection {
             driver,
             connection,
@@ -57,7 +58,8 @@ impl Listener for QuicListener {
         } = connecting.await?;
 
         let remote_pubkey = connection.peer_pubkey()?;
-        let remote_multiaddr = Multiaddr::quic_from_sock_addr(connection.remote_address());
+        let remote_peer_id = remote_pubkey.peer_id();
+        let remote_multiaddr = Multiaddr::quic_peer(connection.remote_address(), remote_peer_id);
 
         tokio::spawn(async move {
             if let Err(err) = driver.await {

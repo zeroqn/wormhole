@@ -1,15 +1,11 @@
-use super::{QuicConfig, QuicConn, QuicListener, QuinnConnectionExt, Transport};
-use crate::{
-    crypto::{PeerId, PrivateKey, PublicKey},
-    multiaddr::{Multiaddr, MultiaddrExt},
-};
+use super::{QuicConn, QuicListener, Transport, QuicConfig, QuinnConnectionExt};
+use crate::{multiaddr::{Multiaddr, MultiaddrExt}, crypto::{PeerId, PublicKey, PrivateKey}};
 
-use anyhow::Error;
-use async_trait::async_trait;
-use creep::Context;
 use log::warn;
-use quinn::{ClientConfig, Endpoint, EndpointBuilder, NewConnection, ServerConfig};
-use quinn_proto::EndpointConfig;
+use quinn::{Endpoint, ServerConfig, ClientConfig, NewConnection};
+use async_trait::async_trait;
+use anyhow::Error;
+use creep::Context;
 
 #[derive(thiserror::Error, Debug)]
 pub enum TransportError {
@@ -20,7 +16,10 @@ pub enum TransportError {
     UndialableMultiaddr(Multiaddr),
 
     #[error("connection peer id mismatch: expect {target}, got {connected}")]
-    PeerMismatch { target: PeerId, connected: PeerId },
+    PeerMismatch{
+        target: PeerId,
+        connected: PeerId,
+    }
 }
 
 #[derive(Clone)]
@@ -103,14 +102,7 @@ impl Transport for QuicTransport {
             }
         });
 
-        Ok(QuicConn::new(
-            connection,
-            bi_streams,
-            self.clone(),
-            self.local_pubkey.clone(),
-            peer_pubkey,
-            raddr,
-        ))
+        Ok(QuicConn::new(connection, bi_streams, self.clone(), self.local_pubkey.clone(), peer_pubkey, raddr))
     }
 
     fn can_dial(&self, raddr: &Multiaddr) -> bool {
@@ -120,9 +112,9 @@ impl Transport for QuicTransport {
     async fn listen(&mut self, laddr: Multiaddr) -> Result<Self::Listener, Error> {
         let sock_addr = laddr.to_socket_addr();
 
-        let mut builder = EndpointBuilder::new(EndpointConfig::default());
-        builder.listen(self.server_config.clone());
+        let mut builder = Endpoint::builder();
         builder.default_client_config(self.client_config.clone());
+        builder.listen(self.server_config.clone());
 
         let (driver, endpoint, incoming) = builder.bind(&sock_addr)?;
 
@@ -135,11 +127,7 @@ impl Transport for QuicTransport {
         self.endpoint = Some(endpoint);
         self.local_multiaddr = Some(laddr.clone());
 
-        Ok(QuicListener::new(
-            incoming,
-            self.local_pubkey.clone(),
-            self.clone(),
-        ))
+        Ok(QuicListener::new(incoming, self.local_pubkey.clone(), self.clone()))
     }
 
     fn local_multiaddr(&self) -> Option<Multiaddr> {

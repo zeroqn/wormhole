@@ -64,6 +64,10 @@ impl PrivateKey {
 
         Ok(Signature(sig.serialize_compact()))
     }
+
+    pub fn pubkey(&self) -> PublicKey {
+        PublicKey(secp256k1::PublicKey::from_secret_key(&SECP256K1, &self.0).serialize())
+    }
 }
 
 // TODO: replace with ophelia trait

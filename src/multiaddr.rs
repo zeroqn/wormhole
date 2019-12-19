@@ -6,15 +6,14 @@ use parity_multiaddr::Protocol;
 use std::net::{IpAddr, SocketAddr};
 
 pub trait MultiaddrExt {
-    fn quic_from_sock_addr(sock: SocketAddr) -> Multiaddr {
-        let mut addr = Multiaddr::from(sock.ip());
-        addr.push(Protocol::Udp(sock.port()));
-        addr.push(Protocol::Quic);
+    fn quic_peer(sock: SocketAddr, peer_id: PeerId) -> Multiaddr {
+        let mut maddr = Multiaddr::from(sock.ip());
+        maddr.push(Protocol::Udp(sock.port()));
+        maddr.push(Protocol::Quic);
+        maddr.push(Protocol::P2p(peer_id.into_inner()));
 
-        addr
+        maddr
     }
-
-    fn push_peer_id(&mut self, peer_id: PeerId);
 
     fn to_socket_addr(&self) -> SocketAddr;
 
@@ -24,10 +23,6 @@ pub trait MultiaddrExt {
 }
 
 impl MultiaddrExt for Multiaddr {
-    fn push_peer_id(&mut self, peer_id: PeerId) {
-        self.push(Protocol::P2p(peer_id.into_inner()))
-    }
-
     /// # panic
     ///
     /// Panic on invalid multiaddr
