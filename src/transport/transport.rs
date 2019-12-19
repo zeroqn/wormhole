@@ -1,6 +1,5 @@
 use super::{QuicConn, QuicListener, Transport, QuicConfig, QuinnConnectionExt};
 use crate::{multiaddr::{Multiaddr, MultiaddrExt}, crypto::{PeerId, PublicKey, PrivateKey}};
-use crate::tls::certificate::P2PSelfSignedCertificate;
 
 use log::warn;
 use quinn::{Endpoint, ServerConfig, ClientConfig, EndpointBuilder, NewConnection};
