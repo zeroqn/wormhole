@@ -1,5 +1,5 @@
 use super::{QuicConn, QuicListener, Transport};
-use crate::{multiaddr::{Multiaddr, MultiaddrExt}, PeerId, PublicKey};
+use crate::{multiaddr::{Multiaddr, MultiaddrExt}, crypto::{PeerId, PublicKey}};
 
 use log::warn;
 use quinn::{Endpoint, ServerConfig, ClientConfig, EndpointBuilder, NewConnection};

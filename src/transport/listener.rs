@@ -1,5 +1,5 @@
 use super::{Listener, QuicConn, QuicTransport, Transport};
-use crate::{multiaddr::{Multiaddr, MultiaddrExt}, PublicKey};
+use crate::{multiaddr::{Multiaddr, MultiaddrExt}, crypto::PublicKey};
 
 use log::warn;
 use futures::stream::StreamExt;

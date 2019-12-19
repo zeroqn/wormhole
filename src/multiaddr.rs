@@ -1,4 +1,4 @@
-use crate::PeerId;
+use crate::crypto::PeerId;
 
 pub use parity_multiaddr::Multiaddr;
 use parity_multiaddr::Protocol;
@@ -25,7 +25,7 @@ pub trait MultiaddrExt {
 
 impl MultiaddrExt for Multiaddr {
     fn push_peer_id(&mut self, peer_id: PeerId) {
-        self.push(Protocol::P2p(peer_id.0))
+        self.push(Protocol::P2p(peer_id.into_inner()))
     }
 
     /// # panic
@@ -61,10 +61,10 @@ impl MultiaddrExt for Multiaddr {
 
         for proto in self.iter() {
             match proto {
-                Ip4(ip) => has_ip = true,
-                Ip6(ip) => has_ip = true,
-                Udp(port) => has_port = true,
-                Tcp(port) => has_port = true,
+                Ip4(_) => has_ip = true,
+                Ip6(_) => has_ip = true,
+                Udp(_) => has_port = true,
+                Tcp(_) => has_port = true,
                 _ => (),
             }
         }

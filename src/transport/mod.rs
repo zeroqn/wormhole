@@ -8,7 +8,7 @@ pub use capable_conn::QuicConn;
 pub use listener::QuicListener;
 pub use transport::QuicTransport;
 
-use crate::{PeerId, PublicKey};
+use crate::crypto::{PeerId, PublicKey};
 
 use anyhow::Error;
 use async_trait::async_trait;

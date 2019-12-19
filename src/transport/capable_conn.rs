@@ -1,5 +1,5 @@
 use super::{CapableConn, QuicMuxedStream, RESET_ERR_CODE, QuicTransport, Transport};
-use crate::{PeerId, PublicKey, multiaddr::Multiaddr};
+use crate::{crypto::{PublicKey, PeerId}, multiaddr::Multiaddr};
 
 use anyhow::Error;
 use async_trait::async_trait;
