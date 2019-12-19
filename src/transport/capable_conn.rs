@@ -1,5 +1,5 @@
 use super::{CapableConn, QuicMuxedStream, RESET_ERR_CODE, QuicTransport, Transport};
-use crate::{crypto::{PublicKey, PeerId}, multiaddr::Multiaddr};
+use crate::{crypto::{PublicKey, PeerId}, multiaddr::Multiaddr, tls::certificate::P2PSelfSignedCertificate};
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -7,6 +7,30 @@ use futures::{lock::Mutex, stream::StreamExt};
 use quinn::{Connection, ConnectionError, IncomingBiStreams};
 
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+
+#[derive(thiserror::Error, Debug)]
+enum ConnectionInternalError {
+    #[error("wrong number of certs in chain, expect 1, got {0}")]
+    MoreThanOneCertificate(usize),
+}
+
+pub trait QuinnConnectionExt {
+    fn peer_pubkey(&self) -> Result<PublicKey, Error>;
+}
+
+impl QuinnConnectionExt for Connection {
+    fn peer_pubkey(&self) -> Result<PublicKey, Error> {
+        use ConnectionInternalError::*;
+
+        let peer_certs = self.peer_der_certificates().expect("impossible, pass cert verifier without valid certificate");
+
+        if peer_certs.len() > 1 {
+            return Err(MoreThanOneCertificate(peer_certs.len()))?;
+        }
+
+        Ok(P2PSelfSignedCertificate::recover_peer_pubkey(peer_certs[0].as_slice())?)
+    }
+}
 
 #[derive(Clone)]
 pub struct QuicConn {
@@ -21,8 +45,17 @@ pub struct QuicConn {
 }
 
 impl QuicConn {
-    pub fn new(conn: Connection, bi_streams: IncomingBiStreams, transport: QuicTransport, local_pubkey: PublicKey) -> Self {
-        unimplemented!()
+    pub fn new(conn: Connection, bi_streams: IncomingBiStreams, transport: QuicTransport, local_pubkey: PublicKey, remote_pubkey: PublicKey, remote_multiaddr: Multiaddr) -> Self {
+        QuicConn {
+            conn,
+            bi_streams: Arc::new(Mutex::new(bi_streams)),
+            is_closed: Arc::new(AtomicBool::new(false)),
+            transport,
+            
+            local_pubkey,
+            remote_pubkey,
+            remote_multiaddr,
+        }
     }
 }
 
@@ -74,7 +107,7 @@ impl CapableConn for QuicConn {
     }
 
     fn local_multiaddr(&self) -> Multiaddr {
-        self.transport.local_multiaddr()
+        self.transport.local_multiaddr().expect("impossible, got connection without listen")
     }
 
     fn remote_multiaddr(&self) -> Multiaddr {

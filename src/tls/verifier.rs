@@ -1,6 +1,5 @@
-use super::certificate::{DerCertificateError, P2PSelfSignedCertificate};
+use super::certificate::{DerCertificateVerifyError, P2PSelfSignedCertificate};
 
-use anyhow::Error;
 use rustls::{
     ClientCertVerified, ClientCertVerifier, DistinguishedNames, ServerCertVerified,
     ServerCertVerifier, TLSError,
@@ -18,8 +17,8 @@ impl From<PeerCertificateVerifierError> for TLSError {
     }
 }
 
-impl From<DerCertificateError> for TLSError {
-    fn from(err: DerCertificateError) -> TLSError {
+impl From<DerCertificateVerifyError> for TLSError {
+    fn from(err: DerCertificateVerifyError) -> TLSError {
         TLSError::General(err.to_string())
     }
 }

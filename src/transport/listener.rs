@@ -1,4 +1,4 @@
-use super::{Listener, QuicConn, QuicTransport, Transport};
+use super::{Listener, QuicConn, QuicTransport, Transport, QuinnConnectionExt};
 use crate::{multiaddr::{Multiaddr, MultiaddrExt}, crypto::PublicKey};
 
 use log::warn;
@@ -17,16 +17,14 @@ pub enum ListenerError {
 
 pub struct QuicListener {
     incoming: Option<Incoming>,
-    multiaddr: Multiaddr,
     pubkey: PublicKey,
     transport: QuicTransport,
 }
 
 impl QuicListener {
-    pub fn new(incoming: Incoming, local_multiaddr: Multiaddr, local_pubkey: PublicKey, transport: QuicTransport) -> Self {
+    pub fn new(incoming: Incoming, local_pubkey: PublicKey, transport: QuicTransport) -> Self {
         QuicListener {
             incoming: Some(incoming),
-            multiaddr: local_multiaddr,
             pubkey: local_pubkey,
             transport,
         }
@@ -52,13 +50,16 @@ impl Listener for QuicListener {
             ..
         } = connecting.await?;
 
+        let remote_pubkey = connection.peer_pubkey()?;
+        let remote_multiaddr = Multiaddr::quic_from_sock_addr(connection.remote_address());
+
         tokio::spawn(async move {
             if let Err(err) = driver.await {
                 warn!("connection driver err {}", err);
             }
         });
 
-        Ok(QuicConn::new(connection, bi_streams, self.transport, self.pubkey))
+        Ok(QuicConn::new(connection, bi_streams, self.transport.clone(), self.pubkey.clone(), remote_pubkey, remote_multiaddr))
     }
 
     async fn close(&mut self) -> Result<(), Error> {
@@ -68,10 +69,10 @@ impl Listener for QuicListener {
     }
 
     fn addr(&self) -> SocketAddr {
-        self.transport.local_multiaddr().to_socket_addr()
+        self.transport.local_multiaddr().expect("impossible, no multiaddr after listen").to_socket_addr()
     }
 
     fn multiaddr(&self) -> Multiaddr {
-        self.transport.local_multiaddr()
+        self.transport.local_multiaddr().expect("impossible, no multiaddr after listen")
     }
 }

@@ -3,6 +3,8 @@ use lazy_static::lazy_static;
 use parity_multihash::{self as multihash, Multihash};
 use secp256k1::Secp256k1;
 
+use std::fmt;
+
 lazy_static! {
     static ref SECP256K1: Secp256k1<secp256k1::All> = Secp256k1::new();
 }
@@ -11,10 +13,13 @@ lazy_static! {
 pub enum CryptoError {
     #[error("invalid private key {0}")]
     InvalidPrivateKey(Error),
+
     #[error("invalid public key {0}")]
     InvalidPublicKey(Error),
+
     #[error("invalid signature {0}")]
     InvalidSignature(Error),
+
     #[error("unexpect error {0}")]
     UnexpectedError(Error),
 }
@@ -93,7 +98,14 @@ impl PublicKey {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct PeerId(Multihash);
+
+impl fmt::Display for PeerId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.string())
+    }
+}
 
 impl PeerId {
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, Error> {
