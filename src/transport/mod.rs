@@ -1,13 +1,13 @@
 pub mod capable_conn;
-pub mod muxed_stream;
-pub mod listener;
-pub mod transport;
 pub mod config;
+pub mod listener;
+pub mod muxed_stream;
+pub mod transport;
 
-pub use config::QuicConfig;
-pub use muxed_stream::QuicMuxedStream;
 pub use capable_conn::{QuicConn, QuinnConnectionExt};
+pub use config::QuicConfig;
 pub use listener::QuicListener;
+pub use muxed_stream::QuicMuxedStream;
 pub use transport::QuicTransport;
 
 use crate::crypto::{PeerId, PublicKey};
@@ -84,6 +84,6 @@ pub trait Transport: Sync + Send + Clone {
     fn can_dial(&self, raddr: &Multiaddr) -> bool;
 
     async fn listen(&mut self, laddr: Multiaddr) -> Result<Self::Listener, Error>;
-    
+
     fn local_multiaddr(&self) -> Option<Multiaddr>;
 }

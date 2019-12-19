@@ -1,10 +1,13 @@
-use super::{Listener, QuicConn, QuicTransport, Transport, QuinnConnectionExt};
-use crate::{multiaddr::{Multiaddr, MultiaddrExt}, crypto::PublicKey};
+use super::{Listener, QuicConn, QuicTransport, QuinnConnectionExt, Transport};
+use crate::{
+    crypto::PublicKey,
+    multiaddr::{Multiaddr, MultiaddrExt},
+};
 
-use log::warn;
-use futures::stream::StreamExt;
 use anyhow::Error;
 use async_trait::async_trait;
+use futures::stream::StreamExt;
+use log::warn;
 use quinn::{Incoming, NewConnection};
 
 use std::net::SocketAddr;
@@ -42,7 +45,10 @@ impl Listener for QuicListener {
 
         let incoming = self.incoming.as_mut().expect("impossible no incoming");
 
-        let connecting = incoming.next().await.ok_or(ListenerError::ClosedOrDriverLost)?;
+        let connecting = incoming
+            .next()
+            .await
+            .ok_or(ListenerError::ClosedOrDriverLost)?;
         let NewConnection {
             driver,
             connection,
@@ -59,7 +65,14 @@ impl Listener for QuicListener {
             }
         });
 
-        Ok(QuicConn::new(connection, bi_streams, self.transport.clone(), self.pubkey.clone(), remote_pubkey, remote_multiaddr))
+        Ok(QuicConn::new(
+            connection,
+            bi_streams,
+            self.transport.clone(),
+            self.pubkey.clone(),
+            remote_pubkey,
+            remote_multiaddr,
+        ))
     }
 
     async fn close(&mut self) -> Result<(), Error> {
@@ -69,10 +82,15 @@ impl Listener for QuicListener {
     }
 
     fn addr(&self) -> SocketAddr {
-        self.transport.local_multiaddr().expect("impossible, no multiaddr after listen").to_socket_addr()
+        self.transport
+            .local_multiaddr()
+            .expect("impossible, no multiaddr after listen")
+            .to_socket_addr()
     }
 
     fn multiaddr(&self) -> Multiaddr {
-        self.transport.local_multiaddr().expect("impossible, no multiaddr after listen")
+        self.transport
+            .local_multiaddr()
+            .expect("impossible, no multiaddr after listen")
     }
 }
