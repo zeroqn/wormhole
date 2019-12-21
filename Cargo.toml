@@ -8,30 +8,30 @@ edition = "2018"
 
 [dependencies]
 quinn = { git = "https://github.com/zeroqn/quinn", branch = "tip" }
-thiserror = "1.0.9"
-creep = "0.1.1"
-parity-multiaddr = "0.6.0"
-parity-multihash = "0.2.0"
-futures = "0.3.1"
-bytes = "0.5.3"
-ophelia = "0.1.0"
-async-trait = "0.1.21"
-anyhow = "1.0.25"
-log = "0.4.8"
-derive_more = "0.99.2"
-tokio = { version = "0.2.4", features = ["rt-core", "rt-threaded", "time", "macros"] }
+thiserror = "1.0"
+creep = "0.1"
+parity-multiaddr = "0.6"
+parity-multihash = "0.2"
+futures = "0.3"
+bytes = "0.5"
+ophelia = "0.2"
+async-trait = "0.1"
+anyhow = "1.0"
+log = "0.4"
+derive_more = "0.99"
+tokio = { version = "0.2", features = ["rt-core", "rt-threaded", "time", "macros"] }
 
-rcgen = "0.7.0"
+rcgen = "0.7"
 # for bytes 0.5
 prost = { git = "https://github.com/danburkert/prost" }
-tiny-keccak = { version = "2.0.1", features = ["keccak"] }
-rustls = { version = "0.16.0", features = ["dangerous_configuration"] }
-x509-parser = "0.6.0"
-lazy_static = "1.4.0"
-secp256k1 = { version = "0.17.0" }
-bs58 = "0.3.0"
-webpki = "0.21.0"
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+rustls = { version = "0.16", features = ["dangerous_configuration"] }
+x509-parser = "0.6"
+lazy_static = "1.4"
+secp256k1 = "0.17"
+bs58 = "0.3"
+webpki = "0.21"
 
 [dev-dependencies]
-rand = "0.7.2"
-env_logger = "0.7.1"
+rand = "0.7"
+env_logger = "0.7"
