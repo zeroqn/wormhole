@@ -1,4 +1,5 @@
-use super::{CapableConn, QuicMuxedStream, QuicTransport, Transport, RESET_ERR_CODE};
+use super::{CapableConn, Transport, ConnSecurity, ConnMultiaddr};
+use super::{QuicMuxedStream, RESET_ERR_CODE, QuicTransport};
 use crate::{
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
@@ -77,6 +78,32 @@ impl QuicConn {
     }
 }
 
+impl ConnSecurity for QuicConn {
+    fn local_peer(&self) -> PeerId {
+        self.local_pubkey.peer_id()
+    }
+
+    fn remote_peer(&self) -> PeerId {
+        self.remote_pubkey.peer_id()
+    }
+
+    fn remote_public_key(&self) -> PublicKey {
+        self.remote_pubkey.clone()
+    }
+}
+
+impl ConnMultiaddr for QuicConn {
+    fn local_multiaddr(&self) -> Multiaddr {
+        self.transport
+            .local_multiaddr()
+            .expect("impossible, got connection without listen")
+    }
+
+    fn remote_multiaddr(&self) -> Multiaddr {
+        self.remote_multiaddr.clone()
+    }
+}
+
 #[async_trait]
 impl CapableConn for QuicConn {
     type MuxedStream = QuicMuxedStream;
@@ -110,28 +137,6 @@ impl CapableConn for QuicConn {
         self.conn.close(RESET_ERR_CODE.into(), b"close");
 
         Ok(())
-    }
-
-    fn local_peer(&self) -> PeerId {
-        self.local_pubkey.peer_id()
-    }
-
-    fn remote_peer(&self) -> PeerId {
-        self.remote_pubkey.peer_id()
-    }
-
-    fn remote_public_key(&self) -> PublicKey {
-        self.remote_pubkey.clone()
-    }
-
-    fn local_multiaddr(&self) -> Multiaddr {
-        self.transport
-            .local_multiaddr()
-            .expect("impossible, got connection without listen")
-    }
-
-    fn remote_multiaddr(&self) -> Multiaddr {
-        self.remote_multiaddr.clone()
     }
 
     fn transport(&self) -> Self::Transport {
