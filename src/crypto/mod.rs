@@ -74,6 +74,18 @@ impl PrivateKey {
 #[derive(Clone)]
 pub struct PublicKey([u8; 33]);
 
+impl fmt::Debug for PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.string())
+    }
+}
+
+impl fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.string())
+    }
+}
+
 impl PublicKey {
     pub fn from_slice(data: &[u8]) -> Result<Self, CryptoError> {
         Ok(PublicKey(
@@ -83,6 +95,12 @@ impl PublicKey {
 
     pub fn as_slice(&self) -> &[u8] {
         &self.0
+    }
+
+    pub fn string(&self) -> String {
+        bs58::encode(self.as_slice())
+            .with_alphabet(bs58::alphabet::FLICKR)
+            .into_string()
     }
 
     pub fn verify(&self, msg: &[u8], sig: &Signature) -> Result<(), CryptoError> {
