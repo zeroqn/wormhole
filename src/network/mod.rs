@@ -1,3 +1,7 @@
+pub mod conn;
+pub mod stream;
+pub use conn::QuicConn;
+
 use crate::{
     transport::{CapableConn, MuxedStream},
     multiaddr::Multiaddr,
@@ -45,12 +49,14 @@ pub struct ProtocolId {
     name: &'static str,
 }
 
+// TODO: Item should be protocol message
+#[async_trait]
 pub trait Stream: MuxedStream {
-    type Conn;
+    type Conn: Clone + Send;
 
     fn protocol(&self) -> Option<ProtocolId>;
 
-    fn set_protocol(&self, id: ProtocolId);
+    fn set_protocol(&mut self, id: ProtocolId);
 
     fn direction(&self) -> Direction;
 
@@ -58,7 +64,7 @@ pub trait Stream: MuxedStream {
 }
 
 #[async_trait]
-pub trait Conn: CapableConn {
+pub trait Conn: CapableConn + Clone + Send {
     type Stream;
 
     async fn new_stream(&self, proto_id: &ProtocolId) -> Result<Self::Stream, Error>;
