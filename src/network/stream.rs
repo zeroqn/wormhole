@@ -1,20 +1,24 @@
 use super::{Direction, ProtocolId, QuicConn};
-use crate::{network, transport::{self, MuxedStream}};
+use crate::{
+    network,
+    transport::{self, MuxedStream},
+};
 
 use anyhow::Error;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{
     io,
-    prelude::{AsyncRead, AsyncWrite, Future},
     lock::Mutex,
-    ready, pin_mut,
+    pin_mut,
+    prelude::{AsyncRead, AsyncWrite, Future},
+    ready,
 };
 
 use std::{
     pin::Pin,
-    task::{Context, Poll},
     sync::Arc,
+    task::{Context, Poll},
 };
 
 #[derive(Clone)]
@@ -26,12 +30,16 @@ pub struct QuicStream {
 }
 
 impl QuicStream {
-    pub fn new(muxed_stream: transport::QuicMuxedStream, direction: Direction, conn: QuicConn) -> Self {
+    pub fn new(
+        muxed_stream: transport::QuicMuxedStream,
+        direction: Direction,
+        conn: QuicConn,
+    ) -> Self {
         QuicStream {
             inner: Arc::new(Mutex::new(muxed_stream)),
             proto: None,
             direction,
-            conn
+            conn,
         }
     }
 }

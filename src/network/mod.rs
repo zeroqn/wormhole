@@ -4,15 +4,15 @@ pub use conn::QuicConn;
 pub use stream::QuicStream;
 
 use crate::{
-    transport::{ConnSecurity, ConnMultiaddr},
-    multiaddr::Multiaddr,
     crypto::PeerId,
+    multiaddr::Multiaddr,
+    transport::{ConnMultiaddr, ConnSecurity},
 };
 
-use bytes::Bytes;
 use anyhow::Error;
-use creep::Context;
 use async_trait::async_trait;
+use bytes::Bytes;
+use creep::Context;
 use derive_more::Display;
 use futures::io::{AsyncRead, AsyncWrite};
 
@@ -64,7 +64,7 @@ pub trait Stream: AsyncWrite + AsyncRead + futures::stream::Stream<Item = Bytes>
     fn direction(&self) -> Direction;
 
     fn conn(&self) -> Self::Conn;
-    
+
     async fn close(&mut self) -> Result<(), Error>;
 
     async fn reset(&mut self);
@@ -115,7 +115,12 @@ pub trait Network {
 
     fn close(&self) -> Result<(), Error>;
 
-    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, proto_id: ProtocolId) -> Result<Self::Stream, Error>;
+    async fn new_stream(
+        &self,
+        ctx: Context,
+        peer_id: &PeerId,
+        proto_id: ProtocolId,
+    ) -> Result<Self::Stream, Error>;
 
     async fn listen(laddr: Multiaddr) -> Result<(), Error>;
 }

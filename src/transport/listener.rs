@@ -42,7 +42,7 @@ impl Listener for QuicListener {
         if self.incoming.is_none() {
             return Err(ListenerError::ClosedOrDriverLost)?;
         }
-        
+
         let incoming = self.incoming.as_mut().expect("impossible no incoming");
 
         let connecting = incoming

@@ -1,8 +1,9 @@
-use super::{Direction, QuicStream, ProtocolId};
+use super::{Direction, ProtocolId, QuicStream};
 use crate::{
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
-    network, transport::{CapableConn, self},
+    network,
+    transport::{self, CapableConn},
 };
 
 use anyhow::Error;
