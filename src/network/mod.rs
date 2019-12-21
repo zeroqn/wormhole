@@ -1,17 +1,20 @@
 pub mod conn;
 pub mod stream;
 pub use conn::QuicConn;
+pub use stream::QuicStream;
 
 use crate::{
-    transport::{CapableConn, MuxedStream},
+    transport::{ConnSecurity, ConnMultiaddr},
     multiaddr::Multiaddr,
     crypto::PeerId,
 };
 
+use bytes::Bytes;
 use anyhow::Error;
 use creep::Context;
 use async_trait::async_trait;
 use derive_more::Display;
+use futures::io::{AsyncRead, AsyncWrite};
 
 pub enum NetworkEvent<Network, Conn, Stream> {
     Listen(Network, Multiaddr),
@@ -51,7 +54,7 @@ pub struct ProtocolId {
 
 // TODO: Item should be protocol message
 #[async_trait]
-pub trait Stream: MuxedStream {
+pub trait Stream: AsyncWrite + AsyncRead + futures::stream::Stream<Item = Bytes> + Clone {
     type Conn: Clone + Send;
 
     fn protocol(&self) -> Option<ProtocolId>;
@@ -61,17 +64,25 @@ pub trait Stream: MuxedStream {
     fn direction(&self) -> Direction;
 
     fn conn(&self) -> Self::Conn;
+    
+    async fn close(&mut self) -> Result<(), Error>;
+
+    async fn reset(&mut self);
 }
 
 #[async_trait]
-pub trait Conn: CapableConn + Clone + Send {
+pub trait Conn: ConnSecurity + ConnMultiaddr + Clone + Send {
     type Stream;
 
-    async fn new_stream(&self, proto_id: &ProtocolId) -> Result<Self::Stream, Error>;
+    async fn new_stream(&self, proto_id: ProtocolId) -> Result<Self::Stream, Error>;
 
-    async fn streams(&self) -> &[Self::Stream];
+    async fn streams(&self) -> Vec<Self::Stream>;
 
     fn direction(&self) -> Direction;
+
+    fn is_closed(&self) -> bool;
+
+    async fn close(&self) -> Result<(), Error>;
 }
 
 #[async_trait]
