@@ -1,7 +1,9 @@
 pub mod conn;
 pub mod stream;
+pub mod dialer;
 pub use conn::QuicConn;
 pub use stream::QuicStream;
+pub use dialer::QuicDialer;
 
 use crate::{
     crypto::PeerId,
@@ -26,7 +28,7 @@ pub enum NetworkEvent<Network, Conn, Stream> {
 }
 
 #[derive(Debug, Display, PartialEq, Eq, Clone, Copy)]
-pub enum Connectdness {
+pub enum Connectedness {
     #[display(fmt = "not connected before")]
     NotConnected,
     #[display(fmt = "connected")]
@@ -96,13 +98,13 @@ pub trait Dialer {
 
     fn peer_store(&self) -> Self::PeerStore;
 
-    fn connectedness(&self, peer_id: &PeerId) -> Connectdness;
+    async fn connectedness(&self, peer_id: &PeerId) -> Connectedness;
 
-    fn peers(&self) -> &[PeerId];
+    fn peers(&self) -> Vec<PeerId>;
 
-    fn conns(&self) -> &[Self::Conn];
+    fn conns(&self) -> Vec<Self::Conn>;
 
-    fn conn_to_peer(&self, peer_id: &PeerId) -> Self::Conn;
+    fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Self::Conn>;
 }
 
 #[async_trait]

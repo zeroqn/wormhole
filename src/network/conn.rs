@@ -19,6 +19,16 @@ pub struct QuicConn {
     streams: Arc<Mutex<Vec<QuicStream>>>,
 }
 
+impl QuicConn {
+    pub fn new(conn: transport::QuicConn, direction: Direction) -> Self {
+        QuicConn {
+            inner: conn,
+            direction,
+            streams: Default::default(),
+        }
+    }
+}
+
 impl transport::ConnSecurity for QuicConn {
     fn local_peer(&self) -> PeerId {
         self.inner.local_peer()
