@@ -1,6 +1,7 @@
 pub mod conn;
 pub mod stream;
 pub mod dialer;
+pub mod r#impl;
 pub use conn::QuicConn;
 pub use stream::QuicStream;
 pub use dialer::QuicDialer;
@@ -100,22 +101,18 @@ pub trait Dialer {
 
     async fn connectedness(&self, peer_id: &PeerId) -> Connectedness;
 
-    fn peers(&self) -> Vec<PeerId>;
+    async fn peers(&self) -> Vec<PeerId>;
 
-    fn conns(&self) -> Vec<Self::Conn>;
+    async fn conns(&self) -> Vec<Self::Conn>;
 
-    fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Self::Conn>;
+    async fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Self::Conn>;
 }
 
 #[async_trait]
-pub trait Network {
+pub trait Network: Send + Sync + Clone {
     type Stream;
 
-    fn set_remote_conn_handler(&self, handler: impl RemoteConnHandler);
-
-    fn set_remote_stream_handler(&self, handler: impl RemoteStreamHandler);
-
-    fn close(&self) -> Result<(), Error>;
+    async fn close(&self) -> Result<(), Error>;
 
     async fn new_stream(
         &self,
@@ -124,18 +121,18 @@ pub trait Network {
         proto_id: ProtocolId,
     ) -> Result<Self::Stream, Error>;
 
-    async fn listen(laddr: Multiaddr) -> Result<(), Error>;
+    async fn listen(&mut self, laddr: Multiaddr) -> Result<(), Error>;
 }
 
 #[async_trait]
-pub trait RemoteConnHandler {
+pub trait RemoteConnHandler: Send + Sync + Clone {
     type Conn;
 
     async fn handle(&self, conn: Self::Conn);
 }
 
 #[async_trait]
-pub trait RemoteStreamHandler {
+pub trait RemoteStreamHandler: Send + Sync + Clone {
     type Stream;
 
     async fn handle(&self, stream: Self::Stream);

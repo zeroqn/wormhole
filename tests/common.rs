@@ -28,7 +28,7 @@ pub async fn make_xenovox<A: ToSocketAddrs>(
 ) -> Result<(QuicTransport, QuicListener, Multiaddr, PublicKey), Error> {
     let (sk, pk) = random_keypair();
 
-    let mut xenovox = QuicTransport::make(&sk, pk.clone())?;
+    let mut xenovox = QuicTransport::make(&sk)?;
     let mut sock_addr = addr.to_socket_addrs()?;
     let sock_addr = sock_addr.next().ok_or(CommonError::NoSocketAddress)?;
     let maddr = Multiaddr::quic_peer(sock_addr, pk.peer_id());

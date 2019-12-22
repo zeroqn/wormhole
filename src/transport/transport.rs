@@ -35,7 +35,8 @@ pub struct QuicTransport {
 }
 
 impl QuicTransport {
-    pub fn make(host_privkey: &PrivateKey, host_pubkey: PublicKey) -> Result<Self, Error> {
+    pub fn make(host_privkey: &PrivateKey) -> Result<Self, Error> {
+        let host_pubkey = host_privkey.pubkey();
         let config = QuicConfig::make(host_pubkey.clone(), host_privkey)?;
         let server_config = config.make_server_config()?;
         let client_config = config.make_client_config()?;
