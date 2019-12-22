@@ -7,7 +7,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use tracing::warn;
+use tracing::info;
 use quinn::{Incoming, NewConnection};
 
 use std::net::SocketAddr;
@@ -63,7 +63,7 @@ impl Listener for QuicListener {
 
         tokio::spawn(async move {
             if let Err(err) = driver.await {
-                warn!("accepted connection driver err {}", err);
+                info!("accepted connection driver: {}", err);
             }
         });
 

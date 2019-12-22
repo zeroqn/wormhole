@@ -7,7 +7,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
-use tracing::warn;
+use tracing::info;
 use quinn::{ClientConfig, Endpoint, NewConnection, ServerConfig};
 use futures::lock::Mutex;
 
@@ -106,7 +106,7 @@ impl Transport for QuicTransport {
 
         tokio::spawn(async move {
             if let Err(err) = driver.await {
-                warn!("dial connection driver err {}", err);
+                info!("dial connection driver: {}", err);
             }
         });
 
@@ -135,7 +135,7 @@ impl Transport for QuicTransport {
 
         tokio::spawn(async move {
             if let Err(err) = driver.await {
-                warn!("endpoint driver err {}", err);
+                info!("endpoint driver: {}", err);
             }
         });
 
