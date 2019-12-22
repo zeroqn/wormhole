@@ -6,8 +6,8 @@ pub mod stream;
 pub use conn::QuicConn;
 pub(crate) use conn_pool::QuicConnPool;
 pub use dialer::QuicDialer;
-pub use stream::QuicStream;
 pub use r#impl::QuicNetwork;
+pub use stream::QuicStream;
 
 use crate::{
     crypto::PeerId,
@@ -56,6 +56,12 @@ pub enum Direction {
 pub struct ProtocolId {
     id: u64,
     name: &'static str,
+}
+
+impl ProtocolId {
+    pub fn new(id: u64, name: &'static str) -> Self {
+        ProtocolId { id, name }
+    }
 }
 
 // TODO: Item should be protocol message

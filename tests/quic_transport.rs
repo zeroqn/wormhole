@@ -1,12 +1,32 @@
 mod common;
-use common::{make_xenovox, CommonError};
+use common::{CommonError, random_keypair};
 
 use anyhow::Error;
 use creep::Context;
 use futures::channel::mpsc::unbounded;
 use futures::io::{AsyncReadExt, AsyncWriteExt};
 use futures::stream::StreamExt;
-use wormhole::transport::{CapableConn, Listener, Transport};
+use wormhole::{
+    transport::{CapableConn, Listener, Transport, QuicTransport, QuicListener},
+    multiaddr::{Multiaddr, MultiaddrExt},
+    crypto::PublicKey,
+};
+
+use std::net::ToSocketAddrs;
+
+pub async fn make_xenovox<A: ToSocketAddrs>(
+    addr: A,
+) -> Result<(QuicTransport, QuicListener, Multiaddr, PublicKey), Error> {
+    let (sk, pk) = random_keypair();
+
+    let mut xenovox = QuicTransport::make(&sk)?;
+    let mut sock_addr = addr.to_socket_addrs()?;
+    let sock_addr = sock_addr.next().ok_or(CommonError::NoSocketAddress)?;
+    let maddr = Multiaddr::quic_peer(sock_addr, pk.peer_id());
+
+    let listener = xenovox.listen(maddr.clone()).await?;
+    Ok((xenovox, listener, maddr, pk))
+}
 
 #[tokio::test]
 async fn should_able_to_communicate_with_remote_peer() -> Result<(), Error> {
