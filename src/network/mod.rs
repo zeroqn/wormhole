@@ -1,10 +1,13 @@
 pub mod conn;
+pub mod conn_pool;
 pub mod dialer;
 pub mod r#impl;
 pub mod stream;
 pub use conn::QuicConn;
+pub(crate) use conn_pool::QuicConnPool;
 pub use dialer::QuicDialer;
 pub use stream::QuicStream;
+pub use r#impl::QuicNetwork;
 
 use crate::{
     crypto::PeerId,
@@ -39,8 +42,8 @@ pub enum Connectedness {
     #[display(fmt = "unable to connect")]
     CannotConnect,
 }
-
 #[derive(Debug, Display, PartialEq, Eq, Clone, Copy)]
+
 pub enum Direction {
     #[display(fmt = "inbound")]
     Inbound,
@@ -60,7 +63,7 @@ pub struct ProtocolId {
 pub trait Stream: AsyncWrite + AsyncRead + futures::stream::Stream<Item = Bytes> + Clone {
     type Conn: Clone + Send;
 
-    fn protocol(&self) -> ProtocolId;
+    fn protocol(&self) -> Option<ProtocolId>;
 
     fn set_protocol(&mut self, proto_id: ProtocolId);
 

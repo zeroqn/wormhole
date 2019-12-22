@@ -1,4 +1,4 @@
-use super::{Conn, Connectedness, Dialer, Direction, QuicConn};
+use super::{Conn, Connectedness, Dialer, Direction, QuicConn, QuicConnPool};
 use crate::{
     crypto::PeerId,
     peer_store::PeerStore,
@@ -8,15 +8,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
-use futures::lock::Mutex;
 use log::error;
-
-use std::{
-    borrow::Borrow,
-    collections::HashSet,
-    hash::{Hash, Hasher},
-    sync::Arc,
-};
 
 #[derive(thiserror::Error, Debug)]
 pub enum DialerError {
@@ -24,73 +16,59 @@ pub enum DialerError {
     NoAddress(PeerId),
 }
 
-pub struct PeerConn {
-    peer_id: PeerId,
-    conn: QuicConn,
-}
-
-impl Borrow<PeerId> for PeerConn {
-    fn borrow(&self) -> &PeerId {
-        &self.peer_id
-    }
-}
-
-impl PartialEq for PeerConn {
-    fn eq(&self, other: &PeerConn) -> bool {
-        self.peer_id == other.peer_id
-    }
-}
-
-impl Eq for PeerConn {}
-
-impl Hash for PeerConn {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        self.peer_id.hash(hasher)
-    }
-}
-
 #[derive(Clone)]
 pub struct QuicDialer {
     peer_store: PeerStore,
-    conn_pool: Arc<Mutex<HashSet<PeerConn>>>,
+    conn_pool: QuicConnPool,
     transport: QuicTransport,
 }
 
 impl QuicDialer {
-    pub fn new(transport: QuicTransport) -> Self {
+    pub(crate) fn new(
+        peer_store: PeerStore,
+        conn_pool: QuicConnPool,
+        transport: QuicTransport,
+    ) -> Self {
         QuicDialer {
-            peer_store: Default::default(),
-            conn_pool: Default::default(),
+            peer_store,
+            conn_pool,
             transport,
         }
     }
 
     pub(crate) async fn close(&self) -> Result<(), Error> {
-        let peer_conns = {
-            let mut pool = self.conn_pool.lock().await;
-            pool.drain().collect::<Vec<_>>()
-        };
+        let peer_conns = self.conn_pool.drain().await;
 
         for peer_conn in peer_conns.into_iter() {
             let store = self.peer_store.clone();
 
-            tokio::spawn(Self::close_peer_conn(peer_conn, store));
+            tokio::spawn(async move {
+                let peer_id = peer_conn.0.clone();
+
+                if let Err(err) = Self::close_peer_conn(peer_conn, store).await {
+                    error!("close {} connection: {}", peer_id, err);
+                }
+            });
         }
 
         Ok(())
     }
 
-    // TODO: graceful error handle?
-    async fn close_peer_conn(peer_conn: PeerConn, peer_store: PeerStore) {
-        let PeerConn { peer_id, conn } = peer_conn;
-
-        if let Err(err) = conn.close().await {
-            error!("close {} connection: {}", peer_id, err);
-        }
+    async fn close_peer_conn(
+        peer_conn: (PeerId, QuicConn),
+        peer_store: PeerStore,
+    ) -> Result<(), Error> {
+        let (peer_id, conn) = peer_conn;
 
         peer_store
             .set_connectedness(&peer_id, Connectedness::CanConnect)
             .await;
+
+        if conn.is_closed() {
+            Ok(())
+        } else {
+            conn.close().await
+        }
     }
 }
 
@@ -117,10 +95,8 @@ impl Dialer for QuicDialer {
     }
 
     async fn close_peer(&self, peer_id: &PeerId) -> Result<(), Error> {
-        let opt_conn = { self.conn_pool.lock().await.take(peer_id) };
-
-        if let Some(peer_conn) = opt_conn {
-            Self::close_peer_conn(peer_conn, self.peer_store.clone()).await;
+        if let Some(conn) = self.conn_pool.take(peer_id).await {
+            Self::close_peer_conn((peer_id.to_owned(), conn), self.peer_store.clone()).await?;
         }
 
         Ok(())
@@ -135,28 +111,14 @@ impl Dialer for QuicDialer {
     }
 
     async fn peers(&self) -> Vec<PeerId> {
-        self.conn_pool
-            .lock()
-            .await
-            .iter()
-            .map(|pc| pc.peer_id.clone())
-            .collect()
+        self.conn_pool.peers().await
     }
 
     async fn conns(&self) -> Vec<Self::Conn> {
-        self.conn_pool
-            .lock()
-            .await
-            .iter()
-            .map(|pc| pc.conn.clone())
-            .collect()
+        self.conn_pool.conns().await
     }
 
     async fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Self::Conn> {
-        self.conn_pool
-            .lock()
-            .await
-            .get(peer_id)
-            .map(|pc| pc.conn.clone())
+        self.conn_pool.conn_to_peer(peer_id).await
     }
 }

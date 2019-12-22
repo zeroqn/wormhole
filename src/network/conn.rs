@@ -9,6 +9,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use futures::lock::Mutex;
+use log::error;
 
 use std::sync::Arc;
 
@@ -26,6 +27,17 @@ impl QuicConn {
             direction,
             streams: Default::default(),
         }
+    }
+
+    pub(crate) async fn accept(&self) -> Result<QuicStream, Error> {
+        let muxed_stream = self.inner.accept_stream().await?;
+        let new_stream = QuicStream::new(muxed_stream, Direction::Inbound, self.clone());
+
+        {
+            self.streams.lock().await.push(new_stream.clone());
+        }
+
+        Ok(new_stream)
     }
 }
 
@@ -58,10 +70,17 @@ impl network::Conn for QuicConn {
     type Stream = QuicStream;
 
     async fn new_stream(&self, proto_id: ProtocolId) -> Result<Self::Stream, Error> {
-        let muxed_stream = self.inner.open_stream().await?;
+        use network::Stream;
 
-        let stream = QuicStream::new(muxed_stream, proto_id, self.direction, self.clone());
-        Ok(stream)
+        let muxed_stream = self.inner.open_stream().await?;
+        let mut new_stream = QuicStream::new(muxed_stream, self.direction, self.clone());
+        new_stream.set_protocol(proto_id);
+
+        {
+            self.streams.lock().await.push(new_stream.clone());
+        }
+
+        Ok(new_stream)
     }
 
     async fn streams(&self) -> Vec<Self::Stream> {
@@ -77,6 +96,26 @@ impl network::Conn for QuicConn {
     }
 
     async fn close(&self) -> Result<(), Error> {
+        use network::Stream;
+        use transport::ConnSecurity;
+
+        let streams = { self.streams.lock().await.drain(..).collect::<Vec<_>>() };
+
+        for mut stream in streams.into_iter() {
+            let peer_id = self.inner.remote_peer();
+
+            tokio::spawn(async move {
+                if let Err(err) = stream.close().await {
+                    error!(
+                        "close {} protocol {:?} stream: {}",
+                        peer_id.clone(),
+                        stream.protocol(),
+                        err
+                    );
+                }
+            });
+        }
+
         self.inner.close().await
     }
 }

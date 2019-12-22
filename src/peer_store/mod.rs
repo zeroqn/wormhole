@@ -37,6 +37,18 @@ impl PeerInfo {
         }
     }
 
+    pub fn with_all(pubkey: PublicKey, connectedness: Connectedness, addr: Multiaddr) -> Self {
+        let mut addr_set = HashSet::new();
+        addr_set.insert(addr);
+
+        PeerInfo {
+            peer_id: pubkey.peer_id(),
+            pubkey: Some(pubkey),
+            connectedness,
+            multiaddrs: addr_set,
+        }
+    }
+
     pub fn with_addr(peer_id: PeerId, addr: Multiaddr) -> Self {
         let mut addr_set = HashSet::new();
         addr_set.insert(addr);
@@ -93,6 +105,14 @@ impl Default for PeerStore {
 }
 
 impl PeerStore {
+    pub async fn contains(&self, peer_id: &PeerId) -> bool {
+        self.book.lock().await.contains(peer_id)
+    }
+
+    pub async fn register(&self, peer_info: PeerInfo) {
+        self.book.lock().await.insert(peer_info);
+    }
+
     pub async fn get_pubkey(&self, peer_id: &PeerId) -> Option<PublicKey> {
         self.book
             .lock()

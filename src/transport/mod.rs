@@ -66,7 +66,7 @@ pub trait Listener: Send {
 
     async fn accept(&mut self) -> Result<Self::CapableConn, Error>;
 
-    async fn close(&mut self) -> Result<(), Error>;
+    fn close(&mut self) -> Result<(), Error>;
 
     fn addr(&self) -> SocketAddr;
 

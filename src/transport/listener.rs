@@ -77,7 +77,7 @@ impl Listener for QuicListener {
         ))
     }
 
-    async fn close(&mut self) -> Result<(), Error> {
+    fn close(&mut self) -> Result<(), Error> {
         drop(self.incoming.take());
 
         Ok(())
