@@ -1,12 +1,19 @@
-use crate::{crypto::{PeerId, PrivateKey}, multiaddr::Multiaddr, transport::{QuicTransport, QuicListener, Transport, Listener}};
-use super::{Network, QuicDialer, QuicStream, RemoteConnHandler, RemoteStreamHandler, ProtocolId, Dialer, Conn};
+use super::{
+    Conn, Dialer, Network, ProtocolId, QuicDialer, QuicStream, RemoteConnHandler,
+    RemoteStreamHandler,
+};
+use crate::{
+    crypto::{PeerId, PrivateKey},
+    multiaddr::Multiaddr,
+    transport::{Listener, QuicListener, QuicTransport, Transport},
+};
 
-use futures::lock::Mutex;
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
+use futures::lock::Mutex;
 
-use std::{sync::Arc, net::SocketAddr};
+use std::{net::SocketAddr, sync::Arc};
 
 #[derive(thiserror::Error, Debug)]
 pub enum NetworkError {
@@ -28,7 +35,11 @@ where
     CH: RemoteConnHandler + 'static,
     SH: RemoteStreamHandler + 'static,
 {
-    pub fn make(host_privkey: &PrivateKey, conn_handler: CH, stream_handler: SH) -> Result<Self, Error> {
+    pub fn make(
+        host_privkey: &PrivateKey,
+        conn_handler: CH,
+        stream_handler: SH,
+    ) -> Result<Self, Error> {
         let transport = QuicTransport::make(host_privkey)?;
         let dialer = QuicDialer::new(transport.clone());
 
@@ -63,7 +74,12 @@ where
         Ok(())
     }
 
-    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, proto_id: ProtocolId) -> Result<Self::Stream, Error> {
+    async fn new_stream(
+        &self,
+        ctx: Context,
+        peer_id: &PeerId,
+        proto_id: ProtocolId,
+    ) -> Result<Self::Stream, Error> {
         let conn = match self.dialer.conn_to_peer(peer_id).await {
             Some(conn) => conn,
             None => self.dialer.dial_peer(ctx, peer_id).await?,

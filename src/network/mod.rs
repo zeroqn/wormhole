@@ -1,10 +1,10 @@
 pub mod conn;
-pub mod stream;
 pub mod dialer;
 pub mod r#impl;
+pub mod stream;
 pub use conn::QuicConn;
-pub use stream::QuicStream;
 pub use dialer::QuicDialer;
+pub use stream::QuicStream;
 
 use crate::{
     crypto::PeerId,

@@ -1,13 +1,22 @@
-use super::{Connectedness, Dialer, QuicConn, Conn, Direction};
-use crate::{crypto::PeerId, peer_store::PeerStore, transport::{Transport, QuicTransport}};
+use super::{Conn, Connectedness, Dialer, Direction, QuicConn};
+use crate::{
+    crypto::PeerId,
+    peer_store::PeerStore,
+    transport::{QuicTransport, Transport},
+};
 
-use log::error;
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
 use futures::lock::Mutex;
+use log::error;
 
-use std::{collections::HashSet, borrow::Borrow, hash::{Hasher, Hash}, sync::Arc};
+use std::{
+    borrow::Borrow,
+    collections::HashSet,
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum DialerError {
@@ -71,15 +80,17 @@ impl QuicDialer {
         Ok(())
     }
 
-  // TODO: graceful error handle?
+    // TODO: graceful error handle?
     async fn close_peer_conn(peer_conn: PeerConn, peer_store: PeerStore) {
-        let PeerConn {peer_id, conn} = peer_conn;
+        let PeerConn { peer_id, conn } = peer_conn;
 
         if let Err(err) = conn.close().await {
             error!("close {} connection: {}", peer_id, err);
         }
 
-        peer_store.set_connectedness(&peer_id, Connectedness::CanConnect).await;
+        peer_store
+            .set_connectedness(&peer_id, Connectedness::CanConnect)
+            .await;
     }
 }
 
@@ -94,7 +105,9 @@ impl Dialer for QuicDialer {
             if let Some(addr) = addrs.into_iter().next() {
                 let conn = self.transport.dial(ctx, addr, peer_id.to_owned()).await?;
 
-                self.peer_store.set_connectedness(peer_id, Connectedness::Connected).await;
+                self.peer_store
+                    .set_connectedness(peer_id, Connectedness::Connected)
+                    .await;
 
                 return Ok(QuicConn::new(conn, Direction::Outbound));
             }
@@ -104,9 +117,7 @@ impl Dialer for QuicDialer {
     }
 
     async fn close_peer(&self, peer_id: &PeerId) -> Result<(), Error> {
-        let opt_conn = {
-            self.conn_pool.lock().await.take(peer_id)
-        };
+        let opt_conn = { self.conn_pool.lock().await.take(peer_id) };
 
         if let Some(peer_conn) = opt_conn {
             Self::close_peer_conn(peer_conn, self.peer_store.clone()).await;
@@ -124,14 +135,28 @@ impl Dialer for QuicDialer {
     }
 
     async fn peers(&self) -> Vec<PeerId> {
-        self.conn_pool.lock().await.iter().map(|pc| pc.peer_id.clone()).collect()
+        self.conn_pool
+            .lock()
+            .await
+            .iter()
+            .map(|pc| pc.peer_id.clone())
+            .collect()
     }
 
     async fn conns(&self) -> Vec<Self::Conn> {
-        self.conn_pool.lock().await.iter().map(|pc| pc.conn.clone()).collect()
+        self.conn_pool
+            .lock()
+            .await
+            .iter()
+            .map(|pc| pc.conn.clone())
+            .collect()
     }
 
     async fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Self::Conn> {
-        self.conn_pool.lock().await.get(peer_id).map(|pc| pc.conn.clone())
+        self.conn_pool
+            .lock()
+            .await
+            .get(peer_id)
+            .map(|pc| pc.conn.clone())
     }
 }
