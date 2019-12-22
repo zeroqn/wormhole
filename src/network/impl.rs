@@ -14,7 +14,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
 use futures::{channel::oneshot, future::Future, lock::Mutex, ready};
-use log::error;
+use tracing::error;
 
 use std::{
     pin::Pin,

@@ -9,7 +9,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use futures::lock::Mutex;
-use log::error;
+use tracing::error;
 
 use std::sync::Arc;
 

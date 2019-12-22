@@ -7,7 +7,7 @@ use futures::{
     io,
     prelude::{AsyncRead, AsyncWrite, Stream},
 };
-use log::debug;
+use tracing::debug;
 use quinn::{RecvStream, SendStream};
 
 use std::{

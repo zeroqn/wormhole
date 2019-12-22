@@ -10,7 +10,11 @@ use wormhole::transport::{CapableConn, Listener, Transport};
 
 #[tokio::test]
 async fn should_able_to_communicate_with_remote_peer() -> Result<(), Error> {
-    env_logger::init();
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::FmtSubscriber::builder()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .finish(),
+    )?;
 
     let msg = "watch 20-12-2019";
     let (msg_tx, mut msg_rx) = unbounded();
