@@ -209,11 +209,11 @@ where
 {
     pub fn make(
         host_privkey: &PrivateKey,
+        peer_store: PeerStore,
         conn_handler: CH,
         stream_handler: SH,
     ) -> Result<Self, Error> {
         let transport = QuicTransport::make(host_privkey)?;
-        let peer_store = PeerStore::default();
         let conn_pool = QuicConnPool::default();
         let dialer = QuicDialer::new(peer_store.clone(), conn_pool.clone(), transport.clone());
 
