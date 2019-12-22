@@ -57,9 +57,12 @@ impl QuicDialer {
     }
 
     pub(crate) async fn close(&self) -> Result<(), Error> {
-        let mut pool = self.conn_pool.lock().await;
+        let peer_conns = {
+            let mut pool = self.conn_pool.lock().await;
+            pool.drain().collect::<Vec<_>>()
+        };
 
-        for peer_conn in pool.drain() {
+        for peer_conn in peer_conns.into_iter() {
             let store = self.peer_store.clone();
 
             tokio::spawn(Self::close_peer_conn(peer_conn, store));

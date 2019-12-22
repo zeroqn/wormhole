@@ -116,9 +116,11 @@ impl CapableConn for QuicConn {
     }
 
     async fn accept_stream(&self) -> Result<Self::MuxedStream, Error> {
-        let bi_streams = &mut self.bi_streams.lock().await;
+        let opt_stream = {
+            let bi_streams = &mut self.bi_streams.lock().await;
+            bi_streams.next().await
+        };
 
-        let opt_stream = bi_streams.next().await;
         if opt_stream.is_none() {
             self.is_closed.store(true, Ordering::SeqCst);
         }
