@@ -60,9 +60,9 @@ pub struct ProtocolId {
 pub trait Stream: AsyncWrite + AsyncRead + futures::stream::Stream<Item = Bytes> + Clone {
     type Conn: Clone + Send;
 
-    fn protocol(&self) -> Option<ProtocolId>;
+    fn protocol(&self) -> ProtocolId;
 
-    fn set_protocol(&mut self, id: ProtocolId);
+    fn set_protocol(&mut self, proto_id: ProtocolId);
 
     fn direction(&self) -> Direction;
 

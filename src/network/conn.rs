@@ -57,11 +57,10 @@ impl transport::ConnMultiaddr for QuicConn {
 impl network::Conn for QuicConn {
     type Stream = QuicStream;
 
-    async fn new_stream(&self, _proto_id: ProtocolId) -> Result<Self::Stream, Error> {
+    async fn new_stream(&self, proto_id: ProtocolId) -> Result<Self::Stream, Error> {
         let muxed_stream = self.inner.open_stream().await?;
 
-        // TODO: negotiate protocol through these stream
-        let stream = QuicStream::new(muxed_stream, self.direction, self.clone());
+        let stream = QuicStream::new(muxed_stream, proto_id, self.direction, self.clone());
         Ok(stream)
     }
 

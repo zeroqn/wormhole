@@ -24,7 +24,7 @@ use std::{
 #[derive(Clone)]
 pub struct QuicStream {
     inner: Arc<Mutex<transport::QuicMuxedStream>>,
-    proto: Option<ProtocolId>,
+    proto_id: ProtocolId,
     direction: Direction,
     conn: QuicConn,
 }
@@ -32,12 +32,13 @@ pub struct QuicStream {
 impl QuicStream {
     pub fn new(
         muxed_stream: transport::QuicMuxedStream,
+        proto_id: ProtocolId,
         direction: Direction,
         conn: QuicConn,
     ) -> Self {
         QuicStream {
             inner: Arc::new(Mutex::new(muxed_stream)),
-            proto: None,
+            proto_id,
             direction,
             conn,
         }
@@ -105,12 +106,12 @@ impl futures::stream::Stream for QuicStream {
 impl network::Stream for QuicStream {
     type Conn = QuicConn;
 
-    fn protocol(&self) -> Option<ProtocolId> {
-        self.proto.clone()
+    fn protocol(&self) -> ProtocolId {
+        self.proto_id
     }
 
-    fn set_protocol(&mut self, id: ProtocolId) {
-        self.proto = Some(id);
+    fn set_protocol(&mut self, proto_id: ProtocolId) {
+        self.proto_id = proto_id;
     }
 
     fn direction(&self) -> Direction {
