@@ -9,6 +9,9 @@ use async_trait::async_trait;
 use creep::Context;
 use tracing::warn;
 use quinn::{ClientConfig, Endpoint, NewConnection, ServerConfig};
+use futures::lock::Mutex;
+
+use std::sync::Arc;
 
 #[derive(thiserror::Error, Debug)]
 pub enum TransportError {
@@ -28,7 +31,7 @@ pub struct QuicTransport {
     server_config: ServerConfig,
     client_config: ClientConfig,
 
-    endpoint: Option<Endpoint>,
+    endpoint: Arc<Mutex<Option<Endpoint>>>,
 
     local_pubkey: PublicKey,
     local_multiaddr: Option<Multiaddr>,
@@ -46,7 +49,7 @@ impl QuicTransport {
             server_config,
             client_config,
 
-            endpoint: None,
+            endpoint: Arc::new(Mutex::new(None)),
 
             local_pubkey: host_pubkey,
             local_multiaddr: None,
@@ -69,8 +72,10 @@ impl Transport for QuicTransport {
     ) -> Result<Self::CapableConn, Error> {
         use TransportError::*;
 
-        if self.endpoint.is_none() {
-            return Err(NoListen)?;
+        {
+            if self.endpoint.lock().await.is_none() {
+                return Err(NoListen)?;
+            }
         }
 
         if !self.can_dial(&raddr) {
@@ -78,7 +83,9 @@ impl Transport for QuicTransport {
         }
 
         let sock_addr = raddr.to_socket_addr();
-        let endpoint = self.endpoint.as_ref().expect("impossible no listen");
+        let endpoint = {
+            self.endpoint.lock().await.clone().expect("impossible no listen")
+        };
 
         let NewConnection {
             driver,
@@ -132,7 +139,10 @@ impl Transport for QuicTransport {
             }
         });
 
-        self.endpoint = Some(endpoint);
+        {
+            self.endpoint.lock().await.replace(endpoint);
+        }
+
         self.local_multiaddr = Some(laddr.clone());
 
         Ok(QuicListener::new(
