@@ -11,7 +11,7 @@ use tracing::{info, debug};
 use quinn::{ClientConfig, Endpoint, NewConnection, ServerConfig};
 use futures::lock::Mutex;
 
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 #[derive(thiserror::Error, Debug)]
 pub enum TransportError {
@@ -106,15 +106,21 @@ impl Transport for QuicTransport {
 
         debug!("create new connection to {}", raddr);
 
+        let is_closed = Arc::new(AtomicBool::new(false));
+        let is_closed_by_driver = Arc::clone(&is_closed);
+
         tokio::spawn(async move {
             if let Err(err) = driver.await {
                 info!("dial connection driver: {}", err);
             }
+            
+            is_closed_by_driver.store(true, Ordering::SeqCst);
         });
 
         Ok(QuicConn::new(
             connection,
             bi_streams,
+            is_closed,
             self.clone(),
             self.local_pubkey.clone(),
             peer_pubkey,

@@ -63,6 +63,7 @@ impl QuicConn {
     pub fn new(
         conn: Connection,
         bi_streams: IncomingBiStreams,
+        is_closed: Arc<AtomicBool>,
         transport: QuicTransport,
         local_pubkey: PublicKey,
         remote_pubkey: PublicKey,
@@ -71,7 +72,7 @@ impl QuicConn {
         QuicConn {
             conn,
             bi_streams: Arc::new(Mutex::new(bi_streams)),
-            is_closed: Arc::new(AtomicBool::new(false)),
+            is_closed,
             transport,
 
             local_pubkey,
@@ -144,6 +145,10 @@ impl CapableConn for QuicConn {
     }
 
     async fn close(&self) -> Result<(), Error> {
+        if self.is_closed() {
+            return Ok(());
+        }
+
         self.is_closed.store(true, Ordering::SeqCst);
         self.conn.close(RESET_ERR_CODE.into(), b"close");
         
