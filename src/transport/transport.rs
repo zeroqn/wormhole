@@ -7,7 +7,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
-use tracing::info;
+use tracing::{info, debug};
 use quinn::{ClientConfig, Endpoint, NewConnection, ServerConfig};
 use futures::lock::Mutex;
 
@@ -104,6 +104,8 @@ impl Transport for QuicTransport {
             })?;
         }
 
+        debug!("create new connection to {}", raddr);
+
         tokio::spawn(async move {
             if let Err(err) = driver.await {
                 info!("dial connection driver: {}", err);
@@ -144,6 +146,8 @@ impl Transport for QuicTransport {
         }
 
         self.local_multiaddr = Some(laddr.clone());
+
+        debug!("listen on {}", laddr);
 
         Ok(QuicListener::new(
             incoming,

@@ -7,7 +7,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use tracing::info;
+use tracing::{info, debug};
 use quinn::{Incoming, NewConnection};
 
 use std::net::SocketAddr;
@@ -50,6 +50,8 @@ impl Listener for QuicListener {
             .await
             .ok_or(ListenerError::ClosedOrDriverLost)?;
 
+        debug!("got incoming connection attampt from {}", connecting.remote_address());
+
         let NewConnection {
             driver,
             connection,
@@ -60,6 +62,8 @@ impl Listener for QuicListener {
         let remote_pubkey = connection.peer_pubkey()?;
         let remote_peer_id = remote_pubkey.peer_id();
         let remote_multiaddr = Multiaddr::quic_peer(connection.remote_address(), remote_peer_id);
+
+        debug!("accept connection from {}", remote_multiaddr);
 
         tokio::spawn(async move {
             if let Err(err) = driver.await {
@@ -78,6 +82,7 @@ impl Listener for QuicListener {
     }
 
     fn close(&mut self) -> Result<(), Error> {
+        debug!("close transprt listener {:?}", self.transport.local_multiaddr());
         drop(self.incoming.take());
 
         Ok(())

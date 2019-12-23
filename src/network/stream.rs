@@ -1,9 +1,10 @@
 use super::{Direction, ProtocolId, QuicConn};
 use crate::{
     network,
-    transport::{self, MuxedStream},
+    transport::{self, MuxedStream, ConnSecurity},
 };
 
+use tracing::debug;
 use anyhow::Error;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -50,12 +51,14 @@ impl AsyncRead for QuicStream {
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<Result<usize, io::Error>> {
-        let inner = self.get_mut().inner.lock();
+        let stream = self.get_mut();
+        let inner = stream.inner.lock();
         pin_mut!(inner);
 
-        let mut stream = ready!(inner.poll(cx));
+        let mut muxed_stream = ready!(inner.poll(cx));
+        debug!("poll_read on peer stream {} using proto {:?}", stream.conn.remote_peer(), stream.proto_id);
 
-        AsyncRead::poll_read(Pin::new(&mut *stream), cx, buf)
+        AsyncRead::poll_read(Pin::new(&mut *muxed_stream), cx, buf)
     }
 }
 
@@ -65,30 +68,36 @@ impl AsyncWrite for QuicStream {
         cx: &mut Context,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        let inner = self.get_mut().inner.lock();
+        let stream = self.get_mut();
+        let inner = stream.inner.lock();
         pin_mut!(inner);
 
-        let mut stream = ready!(inner.poll(cx));
+        let mut muxed_stream = ready!(inner.poll(cx));
+        debug!("poll_write {} bytes to peer stream {} using proto {:?}", buf.len(), stream.conn.remote_peer(), stream.proto_id);
 
-        AsyncWrite::poll_write(Pin::new(&mut *stream), cx, buf)
+        AsyncWrite::poll_write(Pin::new(&mut *muxed_stream), cx, buf)
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
-        let inner = self.get_mut().inner.lock();
+        let stream = self.get_mut();
+        let inner = stream.inner.lock();
         pin_mut!(inner);
 
-        let mut stream = ready!(inner.poll(cx));
+        let mut muxed_stream = ready!(inner.poll(cx));
+        debug!("poll_flush to peer stream {} using proto {:?}", stream.conn.remote_peer(), stream.proto_id);
 
-        AsyncWrite::poll_flush(Pin::new(&mut *stream), cx)
+        AsyncWrite::poll_flush(Pin::new(&mut *muxed_stream), cx)
     }
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
-        let inner = self.get_mut().inner.lock();
+        let stream = self.get_mut();
+        let inner = stream.inner.lock();
         pin_mut!(inner);
 
-        let mut stream = ready!(inner.poll(cx));
+        let mut muxed_stream = ready!(inner.poll(cx));
+        debug!("poll close to peer stream {} using proto {:?}", stream.conn.remote_peer(), stream.proto_id);
 
-        AsyncWrite::poll_close(Pin::new(&mut *stream), cx)
+        AsyncWrite::poll_close(Pin::new(&mut *muxed_stream), cx)
     }
 }
 
@@ -110,6 +119,7 @@ impl network::Stream for QuicStream {
     }
 
     fn set_protocol(&mut self, proto_id: ProtocolId) {
+        debug!("set peer stream {} to proto {}", self.conn.remote_peer(), proto_id);
         self.proto_id = Some(proto_id);
     }
 
@@ -122,10 +132,12 @@ impl network::Stream for QuicStream {
     }
 
     async fn close(&mut self) -> Result<(), Error> {
+        debug!("close peer stream {}", self.conn.remote_peer());
         self.inner.lock().await.close().await
     }
 
     async fn reset(&mut self) {
+        debug!("reset peer stream {}", self.conn.remote_peer());
         self.inner.lock().await.reset()
     }
 }

@@ -61,6 +61,7 @@ impl Stream for QuicMuxedStream {
 #[async_trait]
 impl MuxedStream for QuicMuxedStream {
     async fn close(&mut self) -> Result<(), anyhow::Error> {
+        debug!("close send stream");
         Ok(self.send.finish().await?)
     }
 

@@ -22,6 +22,8 @@ use creep::Context;
 use derive_more::Display;
 use futures::io::{AsyncRead, AsyncWrite};
 
+use std::fmt;
+
 pub enum NetworkEvent<Network, Conn, Stream> {
     Listen(Network, Multiaddr),
     ListenClose(Network, Multiaddr),
@@ -51,11 +53,17 @@ pub enum Direction {
     Outbound,
 }
 
-#[derive(Debug, Display, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Display, PartialEq, Eq, Hash, Clone, Copy)]
 #[display(fmt = "protocol {} => {}", id, name)]
 pub struct ProtocolId {
     id: u64,
     name: &'static str,
+}
+
+impl fmt::Debug for ProtocolId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.to_string().fmt(f)
+    }
 }
 
 impl ProtocolId {

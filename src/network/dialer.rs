@@ -8,7 +8,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
-use tracing::error;
+use tracing::{error, debug};
 
 #[derive(thiserror::Error, Debug)]
 pub enum DialerError {
@@ -81,11 +81,15 @@ impl Dialer for QuicDialer {
         if let Some(addrs) = self.peer_store.get_multiaddrs(peer_id).await {
             // TODO: simply use first address right now
             if let Some(addr) = addrs.into_iter().next() {
+                debug!("dial peer {}", addr);
+
                 let conn = self.transport.dial(ctx, addr, peer_id.to_owned()).await?;
 
                 self.peer_store
                     .set_connectedness(peer_id, Connectedness::Connected)
                     .await;
+
+                debug!("connected to peer {}", peer_id);
 
                 return Ok(QuicConn::new(conn, Direction::Outbound));
             }
@@ -96,7 +100,11 @@ impl Dialer for QuicDialer {
 
     async fn close_peer(&self, peer_id: &PeerId) -> Result<(), Error> {
         if let Some(conn) = self.conn_pool.take(peer_id).await {
+            debug!("close peer {}", peer_id);
+
             Self::close_peer_conn((peer_id.to_owned(), conn), self.peer_store.clone()).await?;
+
+            debug!("disconnected to peer {}", peer_id);
         }
 
         Ok(())

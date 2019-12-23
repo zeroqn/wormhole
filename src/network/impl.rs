@@ -14,7 +14,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
 use futures::{channel::oneshot, future::Future, lock::Mutex, ready};
-use tracing::error;
+use tracing::{error, debug};
 
 use std::{
     pin::Pin,
@@ -255,6 +255,8 @@ where
         peer_id: &PeerId,
         proto_id: ProtocolId,
     ) -> Result<Self::Stream, Error> {
+        debug!("new stream to {} using protocol {}", peer_id, proto_id);
+
         let conn = match self.dialer.conn_to_peer(peer_id).await {
             Some(conn) => conn,
             None => self.dialer.dial_peer(ctx, peer_id).await?,

@@ -3,13 +3,13 @@ use crate::{
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
     network,
-    transport::{self, CapableConn},
+    transport::{self, CapableConn, ConnSecurity},
 };
 
 use anyhow::Error;
 use async_trait::async_trait;
 use futures::lock::Mutex;
-use tracing::error;
+use tracing::{error, debug};
 
 use std::sync::Arc;
 
@@ -32,6 +32,7 @@ impl QuicConn {
     pub(crate) async fn accept(&self) -> Result<QuicStream, Error> {
         let muxed_stream = self.inner.accept_stream().await?;
         let new_stream = QuicStream::new(muxed_stream, Direction::Inbound, self.clone());
+        debug!("accepted new stream from peer {}", self.remote_peer());
 
         {
             self.streams.lock().await.push(new_stream.clone());
@@ -76,6 +77,8 @@ impl network::Conn for QuicConn {
         let mut new_stream = QuicStream::new(muxed_stream, self.direction, self.clone());
         new_stream.set_protocol(proto_id);
 
+        debug!("create new stream to peer {} using proto {}", self.remote_peer(), proto_id);
+
         {
             self.streams.lock().await.push(new_stream.clone());
         }
@@ -97,7 +100,8 @@ impl network::Conn for QuicConn {
 
     async fn close(&self) -> Result<(), Error> {
         use network::Stream;
-        use transport::ConnSecurity;
+        
+        debug!("close connection to peer {}", self.remote_peer());
 
         let streams = { self.streams.lock().await.drain(..).collect::<Vec<_>>() };
 
