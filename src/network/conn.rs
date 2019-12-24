@@ -3,12 +3,13 @@ use crate::{
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
     network,
-    transport::{self, CapableConn},
+    transport::{self, CapableConn, ConnSecurity},
 };
 
 use anyhow::Error;
 use async_trait::async_trait;
 use futures::lock::Mutex;
+use tracing::{debug, error};
 
 use std::sync::Arc;
 
@@ -26,6 +27,18 @@ impl QuicConn {
             direction,
             streams: Default::default(),
         }
+    }
+
+    pub(crate) async fn accept(&self) -> Result<QuicStream, Error> {
+        let muxed_stream = self.inner.accept_stream().await?;
+        let new_stream = QuicStream::new(muxed_stream, Direction::Inbound, self.clone());
+        debug!("accepted new stream from peer {}", self.remote_peer());
+
+        {
+            self.streams.lock().await.push(new_stream.clone());
+        }
+
+        Ok(new_stream)
     }
 }
 
@@ -57,12 +70,24 @@ impl transport::ConnMultiaddr for QuicConn {
 impl network::Conn for QuicConn {
     type Stream = QuicStream;
 
-    async fn new_stream(&self, _proto_id: ProtocolId) -> Result<Self::Stream, Error> {
-        let muxed_stream = self.inner.open_stream().await?;
+    async fn new_stream(&self, proto_id: ProtocolId) -> Result<Self::Stream, Error> {
+        use network::Stream;
 
-        // TODO: negotiate protocol through these stream
-        let stream = QuicStream::new(muxed_stream, self.direction, self.clone());
-        Ok(stream)
+        let muxed_stream = self.inner.open_stream().await?;
+        let mut new_stream = QuicStream::new(muxed_stream, self.direction, self.clone());
+        new_stream.set_protocol(proto_id);
+
+        debug!(
+            "create new stream to peer {} using proto {}",
+            self.remote_peer(),
+            proto_id
+        );
+
+        {
+            self.streams.lock().await.push(new_stream.clone());
+        }
+
+        Ok(new_stream)
     }
 
     async fn streams(&self) -> Vec<Self::Stream> {
@@ -78,6 +103,27 @@ impl network::Conn for QuicConn {
     }
 
     async fn close(&self) -> Result<(), Error> {
+        use network::Stream;
+
+        debug!("close connection to peer {}", self.remote_peer());
+
+        let streams = { self.streams.lock().await.drain(..).collect::<Vec<_>>() };
+
+        for mut stream in streams.into_iter() {
+            let peer_id = self.inner.remote_peer();
+
+            tokio::spawn(async move {
+                if let Err(err) = stream.close().await {
+                    error!(
+                        "close {} protocol {:?} stream: {}",
+                        peer_id.clone(),
+                        stream.protocol(),
+                        err
+                    );
+                }
+            });
+        }
+
         self.inner.close().await
     }
 }

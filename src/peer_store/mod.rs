@@ -17,7 +17,7 @@ use std::{
 #[derive(thiserror::Error, Debug)]
 pub enum PeerStoreError {
     #[error("{peer_id} is not derive from {pubkey}")]
-    PeerIdNotMatchPubKey {peer_id: PeerId, pubkey: PublicKey}
+    PeerIdNotMatchPubKey { peer_id: PeerId, pubkey: PublicKey },
 }
 
 pub struct PeerInfo {
@@ -34,6 +34,18 @@ impl PeerInfo {
             pubkey: None,
             connectedness: Connectedness::NotConnected,
             multiaddrs: HashSet::new(),
+        }
+    }
+
+    pub fn with_all(pubkey: PublicKey, connectedness: Connectedness, addr: Multiaddr) -> Self {
+        let mut addr_set = HashSet::new();
+        addr_set.insert(addr);
+
+        PeerInfo {
+            peer_id: pubkey.peer_id(),
+            pubkey: Some(pubkey),
+            connectedness,
+            multiaddrs: addr_set,
         }
     }
 
@@ -93,8 +105,21 @@ impl Default for PeerStore {
 }
 
 impl PeerStore {
+    pub async fn contains(&self, peer_id: &PeerId) -> bool {
+        self.book.lock().await.contains(peer_id)
+    }
+
+    pub async fn register(&self, peer_info: PeerInfo) {
+        self.book.lock().await.insert(peer_info);
+    }
+
     pub async fn get_pubkey(&self, peer_id: &PeerId) -> Option<PublicKey> {
-        self.book.lock().await.get(peer_id).map(|pi| pi.pubkey.clone()).flatten()
+        self.book
+            .lock()
+            .await
+            .get(peer_id)
+            .map(|pi| pi.pubkey.clone())
+            .flatten()
     }
 
     pub async fn set_pubkey(&self, peer_id: &PeerId, pubkey: PublicKey) -> Result<(), Error> {
@@ -102,11 +127,12 @@ impl PeerStore {
             return Err(PeerStoreError::PeerIdNotMatchPubKey {
                 peer_id: peer_id.to_owned(),
                 pubkey,
-            }.into());
+            }
+            .into());
         }
 
         let mut book = self.book.lock().await;
-        
+
         if let Some(mut peer_info) = book.take(peer_id) {
             peer_info.pubkey = Some(pubkey);
             book.insert(peer_info);
@@ -118,12 +144,17 @@ impl PeerStore {
     }
 
     pub async fn get_connectedness(&self, peer_id: &PeerId) -> Connectedness {
-        self.book.lock().await.get(peer_id).map(|pi| pi.connectedness).unwrap_or_else(|| Connectedness::NotConnected)
+        self.book
+            .lock()
+            .await
+            .get(peer_id)
+            .map(|pi| pi.connectedness)
+            .unwrap_or_else(|| Connectedness::NotConnected)
     }
 
     pub async fn set_connectedness(&self, peer_id: &PeerId, connectedness: Connectedness) {
         let mut book = self.book.lock().await;
-        
+
         if let Some(mut peer_info) = book.take(peer_id) {
             peer_info.connectedness = connectedness;
             book.insert(peer_info);
@@ -133,14 +164,18 @@ impl PeerStore {
     }
 
     pub async fn get_multiaddrs(&self, peer_id: &PeerId) -> Option<HashSet<Multiaddr>> {
-        self.book.lock().await.get(peer_id).map(|pi| pi.multiaddrs.clone())
+        self.book
+            .lock()
+            .await
+            .get(peer_id)
+            .map(|pi| pi.multiaddrs.clone())
     }
 
     // TODO: check peer id in multiaddr match given peer id.
     // But we need to take care of relay address.
     pub async fn set_multiaddr(&self, peer_id: &PeerId, addr: Multiaddr) {
         let mut book = self.book.lock().await;
-        
+
         if let Some(mut peer_info) = book.take(peer_id) {
             peer_info.multiaddrs.insert(addr);
             book.insert(peer_info);

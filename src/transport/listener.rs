@@ -7,10 +7,16 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use log::warn;
 use quinn::{Incoming, NewConnection};
+use tracing::{debug, info};
 
-use std::net::SocketAddr;
+use std::{
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum ListenerError {
@@ -50,6 +56,11 @@ impl Listener for QuicListener {
             .await
             .ok_or(ListenerError::ClosedOrDriverLost)?;
 
+        debug!(
+            "got incoming connection attampt from {}",
+            connecting.remote_address()
+        );
+
         let NewConnection {
             driver,
             connection,
@@ -61,15 +72,23 @@ impl Listener for QuicListener {
         let remote_peer_id = remote_pubkey.peer_id();
         let remote_multiaddr = Multiaddr::quic_peer(connection.remote_address(), remote_peer_id);
 
+        debug!("accept connection from {}", remote_multiaddr);
+
+        let is_closed = Arc::new(AtomicBool::new(false));
+        let is_closed_by_driver = Arc::clone(&is_closed);
+
         tokio::spawn(async move {
             if let Err(err) = driver.await {
-                warn!("connection driver err {}", err);
+                info!("accepted connection driver: {}", err);
             }
+
+            is_closed_by_driver.store(true, Ordering::SeqCst);
         });
 
         Ok(QuicConn::new(
             connection,
             bi_streams,
+            is_closed,
             self.transport.clone(),
             self.pubkey.clone(),
             remote_pubkey,
@@ -77,7 +96,11 @@ impl Listener for QuicListener {
         ))
     }
 
-    async fn close(&mut self) -> Result<(), Error> {
+    fn close(&mut self) -> Result<(), Error> {
+        debug!(
+            "close transprt listener {:?}",
+            self.transport.local_multiaddr()
+        );
         drop(self.incoming.take());
 
         Ok(())

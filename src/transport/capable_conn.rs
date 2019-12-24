@@ -10,6 +10,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::{lock::Mutex, stream::StreamExt};
 use quinn::{Connection, ConnectionError, IncomingBiStreams};
+use tracing::debug;
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -52,6 +53,8 @@ pub struct QuicConn {
     transport: QuicTransport,
 
     local_pubkey: PublicKey,
+
+    remote_peer_id: PeerId,
     remote_pubkey: PublicKey,
     remote_multiaddr: Multiaddr,
 }
@@ -60,6 +63,7 @@ impl QuicConn {
     pub fn new(
         conn: Connection,
         bi_streams: IncomingBiStreams,
+        is_closed: Arc<AtomicBool>,
         transport: QuicTransport,
         local_pubkey: PublicKey,
         remote_pubkey: PublicKey,
@@ -68,10 +72,12 @@ impl QuicConn {
         QuicConn {
             conn,
             bi_streams: Arc::new(Mutex::new(bi_streams)),
-            is_closed: Arc::new(AtomicBool::new(false)),
+            is_closed,
             transport,
 
             local_pubkey,
+
+            remote_peer_id: remote_pubkey.peer_id(),
             remote_pubkey,
             remote_multiaddr,
         }
@@ -84,7 +90,7 @@ impl ConnSecurity for QuicConn {
     }
 
     fn remote_peer(&self) -> PeerId {
-        self.remote_pubkey.peer_id()
+        self.remote_peer_id.clone()
     }
 
     fn remote_public_key(&self) -> PublicKey {
@@ -112,18 +118,24 @@ impl CapableConn for QuicConn {
     async fn open_stream(&self) -> Result<Self::MuxedStream, Error> {
         let (send, read) = self.conn.open_bi().await?;
 
+        debug!("open stream on peer connection {}", self.remote_peer_id);
+
         Ok(QuicMuxedStream::new(read, send))
     }
 
     async fn accept_stream(&self) -> Result<Self::MuxedStream, Error> {
-        let bi_streams = &mut self.bi_streams.lock().await;
+        let opt_stream = {
+            let bi_streams = &mut self.bi_streams.lock().await;
+            bi_streams.next().await
+        };
 
-        let opt_stream = bi_streams.next().await;
         if opt_stream.is_none() {
             self.is_closed.store(true, Ordering::SeqCst);
         }
 
         let (send, read) = opt_stream.ok_or(ConnectionError::LocallyClosed)??;
+
+        debug!("got bi-stream from {}", self.remote_peer_id);
 
         Ok(QuicMuxedStream::new(read, send))
     }
@@ -133,8 +145,14 @@ impl CapableConn for QuicConn {
     }
 
     async fn close(&self) -> Result<(), Error> {
+        if self.is_closed() {
+            return Ok(());
+        }
+
         self.is_closed.store(true, Ordering::SeqCst);
         self.conn.close(RESET_ERR_CODE.into(), b"close");
+
+        debug!("close connection to peer {}", self.remote_peer_id);
 
         Ok(())
     }

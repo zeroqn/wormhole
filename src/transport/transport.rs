@@ -7,8 +7,14 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
-use log::warn;
+use futures::lock::Mutex;
 use quinn::{ClientConfig, Endpoint, NewConnection, ServerConfig};
+use tracing::{debug, info};
+
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum TransportError {
@@ -28,14 +34,15 @@ pub struct QuicTransport {
     server_config: ServerConfig,
     client_config: ClientConfig,
 
-    endpoint: Option<Endpoint>,
+    endpoint: Arc<Mutex<Option<Endpoint>>>,
 
     local_pubkey: PublicKey,
     local_multiaddr: Option<Multiaddr>,
 }
 
 impl QuicTransport {
-    pub fn make(host_privkey: &PrivateKey, host_pubkey: PublicKey) -> Result<Self, Error> {
+    pub fn make(host_privkey: &PrivateKey) -> Result<Self, Error> {
+        let host_pubkey = host_privkey.pubkey();
         let config = QuicConfig::make(host_pubkey.clone(), host_privkey)?;
         let server_config = config.make_server_config()?;
         let client_config = config.make_client_config()?;
@@ -45,7 +52,7 @@ impl QuicTransport {
             server_config,
             client_config,
 
-            endpoint: None,
+            endpoint: Arc::new(Mutex::new(None)),
 
             local_pubkey: host_pubkey,
             local_multiaddr: None,
@@ -68,8 +75,10 @@ impl Transport for QuicTransport {
     ) -> Result<Self::CapableConn, Error> {
         use TransportError::*;
 
-        if self.endpoint.is_none() {
-            return Err(NoListen)?;
+        {
+            if self.endpoint.lock().await.is_none() {
+                return Err(NoListen)?;
+            }
         }
 
         if !self.can_dial(&raddr) {
@@ -77,7 +86,13 @@ impl Transport for QuicTransport {
         }
 
         let sock_addr = raddr.to_socket_addr();
-        let endpoint = self.endpoint.as_ref().expect("impossible no listen");
+        let endpoint = {
+            self.endpoint
+                .lock()
+                .await
+                .clone()
+                .expect("impossible no listen")
+        };
 
         let NewConnection {
             driver,
@@ -96,15 +111,23 @@ impl Transport for QuicTransport {
             })?;
         }
 
+        debug!("create new connection to {}", raddr);
+
+        let is_closed = Arc::new(AtomicBool::new(false));
+        let is_closed_by_driver = Arc::clone(&is_closed);
+
         tokio::spawn(async move {
             if let Err(err) = driver.await {
-                warn!("connection driver err {}", err);
+                info!("dial connection driver: {}", err);
             }
+
+            is_closed_by_driver.store(true, Ordering::SeqCst);
         });
 
         Ok(QuicConn::new(
             connection,
             bi_streams,
+            is_closed,
             self.clone(),
             self.local_pubkey.clone(),
             peer_pubkey,
@@ -127,12 +150,17 @@ impl Transport for QuicTransport {
 
         tokio::spawn(async move {
             if let Err(err) = driver.await {
-                warn!("endpoint driver err {}", err);
+                info!("endpoint driver: {}", err);
             }
         });
 
-        self.endpoint = Some(endpoint);
+        {
+            self.endpoint.lock().await.replace(endpoint);
+        }
+
         self.local_multiaddr = Some(laddr.clone());
+
+        debug!("listen on {}", laddr);
 
         Ok(QuicListener::new(
             incoming,

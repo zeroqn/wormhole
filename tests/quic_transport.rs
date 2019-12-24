@@ -1,16 +1,40 @@
 mod common;
-use common::{make_xenovox, CommonError};
+use common::{random_keypair, CommonError};
 
 use anyhow::Error;
 use creep::Context;
 use futures::channel::mpsc::unbounded;
 use futures::io::{AsyncReadExt, AsyncWriteExt};
 use futures::stream::StreamExt;
-use wormhole::transport::{CapableConn, Listener, Transport};
+use wormhole::{
+    crypto::PublicKey,
+    multiaddr::{Multiaddr, MultiaddrExt},
+    transport::{CapableConn, Listener, QuicListener, QuicTransport, Transport},
+};
+
+use std::net::ToSocketAddrs;
+
+pub async fn make_xenovox<A: ToSocketAddrs>(
+    addr: A,
+) -> Result<(QuicTransport, QuicListener, Multiaddr, PublicKey), Error> {
+    let (sk, pk) = random_keypair();
+
+    let mut xenovox = QuicTransport::make(&sk)?;
+    let mut sock_addr = addr.to_socket_addrs()?;
+    let sock_addr = sock_addr.next().ok_or(CommonError::NoSocketAddress)?;
+    let maddr = Multiaddr::quic_peer(sock_addr, pk.peer_id());
+
+    let listener = xenovox.listen(maddr.clone()).await?;
+    Ok((xenovox, listener, maddr, pk))
+}
 
 #[tokio::test]
 async fn should_able_to_communicate_with_remote_peer() -> Result<(), Error> {
-    env_logger::init();
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::FmtSubscriber::builder()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .finish(),
+    )?;
 
     let msg = "watch 20-12-2019";
     let (msg_tx, mut msg_rx) = unbounded();

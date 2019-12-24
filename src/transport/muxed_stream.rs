@@ -7,8 +7,8 @@ use futures::{
     io,
     prelude::{AsyncRead, AsyncWrite, Stream},
 };
-use log::debug;
 use quinn::{RecvStream, SendStream};
+use tracing::debug;
 
 use std::{
     pin::Pin,
@@ -61,6 +61,7 @@ impl Stream for QuicMuxedStream {
 #[async_trait]
 impl MuxedStream for QuicMuxedStream {
     async fn close(&mut self) -> Result<(), anyhow::Error> {
+        debug!("close send stream");
         Ok(self.send.finish().await?)
     }
 

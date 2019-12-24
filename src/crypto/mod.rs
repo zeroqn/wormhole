@@ -98,9 +98,7 @@ impl PublicKey {
     }
 
     pub fn string(&self) -> String {
-        bs58::encode(self.as_slice())
-            .with_alphabet(bs58::alphabet::FLICKR)
-            .into_string()
+        bs58::encode(self.as_slice()).into_string()
     }
 
     pub fn verify(&self, msg: &[u8], sig: &Signature) -> Result<(), CryptoError> {
@@ -141,9 +139,7 @@ impl PeerId {
     }
 
     pub fn string(&self) -> String {
-        bs58::encode(self.as_slice())
-            .with_alphabet(bs58::alphabet::FLICKR)
-            .into_string()
+        bs58::encode(self.as_slice()).into_string()
     }
 
     pub fn into_inner(self) -> Multihash {
