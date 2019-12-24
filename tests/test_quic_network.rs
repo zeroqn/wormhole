@@ -1,7 +1,6 @@
 mod common;
 use common::{random_keypair, CommonError};
 
-use tracing::debug;
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
@@ -27,9 +26,7 @@ pub struct NoopConnHandler;
 impl RemoteConnHandler for NoopConnHandler {
     type Conn = QuicConn;
 
-    async fn handle(&self, _conn: Self::Conn) {
-        debug!("got ciri signal");
-    }
+    async fn handle(&self, _conn: Self::Conn) {}
 }
 
 #[derive(Clone)]
@@ -40,7 +37,6 @@ impl RemoteStreamHandler for EchoStreamHandler {
     type Stream = QuicStream;
 
     async fn handle(&self, mut stream: Self::Stream) {
-        debug!("try reading ciri message");
         let mut msg = String::new();
 
         stream
@@ -101,9 +97,7 @@ async fn test_quic_network_with_remote_peer() -> Result<(), Error> {
         .await?;
 
     ciri_stream.write_all(msg.as_bytes()).await?;
-    debug!("ciri write all message");
     ciri_stream.close().await?;
-    debug!("ciri close stream");
 
     assert_eq!(&msg_rx.next().await.ok_or(CommonError::NoMessage)?, &msg);
 
