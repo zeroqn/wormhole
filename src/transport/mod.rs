@@ -30,8 +30,22 @@ pub trait MuxedStream: AsyncRead + AsyncWrite + Stream<Item = Bytes> {
     fn reset(&mut self);
 }
 
+pub trait ConnSecurity {
+    fn local_peer(&self) -> PeerId;
+
+    fn remote_peer(&self) -> PeerId;
+
+    fn remote_public_key(&self) -> PublicKey;
+}
+
+pub trait ConnMultiaddr {
+    fn local_multiaddr(&self) -> Multiaddr;
+
+    fn remote_multiaddr(&self) -> Multiaddr;
+}
+
 #[async_trait]
-pub trait CapableConn: Sync + Send + Clone {
+pub trait CapableConn: ConnSecurity + ConnMultiaddr + Sync + Send + Clone {
     type MuxedStream: MuxedStream;
     type Transport: Sync + Send + Clone + Transport;
 
@@ -42,16 +56,6 @@ pub trait CapableConn: Sync + Send + Clone {
     fn is_closed(&self) -> bool;
 
     async fn close(&self) -> Result<(), Error>;
-
-    fn local_peer(&self) -> PeerId;
-
-    fn remote_peer(&self) -> PeerId;
-
-    fn remote_public_key(&self) -> PublicKey;
-
-    fn local_multiaddr(&self) -> Multiaddr;
-
-    fn remote_multiaddr(&self) -> Multiaddr;
 
     fn transport(&self) -> Self::Transport;
 }
