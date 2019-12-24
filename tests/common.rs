@@ -23,7 +23,9 @@ pub fn random_keypair() -> (PrivateKey, PublicKey) {
     (privkey, pubkey)
 }
 
-pub async fn make_xenovox<A: ToSocketAddrs>(addr: A) -> Result<(QuicTransport, QuicListener, Multiaddr, PublicKey), Error> {
+pub async fn make_xenovox<A: ToSocketAddrs>(
+    addr: A,
+) -> Result<(QuicTransport, QuicListener, Multiaddr, PublicKey), Error> {
     let (sk, pk) = random_keypair();
 
     let mut xenovox = QuicTransport::make(&sk, pk.clone())?;

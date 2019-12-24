@@ -1,18 +1,20 @@
 pub mod conn;
 pub mod stream;
+pub mod dialer;
 pub use conn::QuicConn;
 pub use stream::QuicStream;
+pub use dialer::QuicDialer;
 
 use crate::{
-    transport::{ConnSecurity, ConnMultiaddr},
-    multiaddr::Multiaddr,
     crypto::PeerId,
+    multiaddr::Multiaddr,
+    transport::{ConnMultiaddr, ConnSecurity},
 };
 
-use bytes::Bytes;
 use anyhow::Error;
-use creep::Context;
 use async_trait::async_trait;
+use bytes::Bytes;
+use creep::Context;
 use derive_more::Display;
 use futures::io::{AsyncRead, AsyncWrite};
 
@@ -26,7 +28,7 @@ pub enum NetworkEvent<Network, Conn, Stream> {
 }
 
 #[derive(Debug, Display, PartialEq, Eq, Clone, Copy)]
-pub enum Connectdness {
+pub enum Connectedness {
     #[display(fmt = "not connected before")]
     NotConnected,
     #[display(fmt = "connected")]
@@ -64,7 +66,7 @@ pub trait Stream: AsyncWrite + AsyncRead + futures::stream::Stream<Item = Bytes>
     fn direction(&self) -> Direction;
 
     fn conn(&self) -> Self::Conn;
-    
+
     async fn close(&mut self) -> Result<(), Error>;
 
     async fn reset(&mut self);
@@ -96,13 +98,13 @@ pub trait Dialer {
 
     fn peer_store(&self) -> Self::PeerStore;
 
-    fn connectedness(&self, peer_id: &PeerId) -> Connectdness;
+    async fn connectedness(&self, peer_id: &PeerId) -> Connectedness;
 
-    fn peers(&self) -> &[PeerId];
+    fn peers(&self) -> Vec<PeerId>;
 
-    fn conns(&self) -> &[Self::Conn];
+    fn conns(&self) -> Vec<Self::Conn>;
 
-    fn conn_to_peer(&self, peer_id: &PeerId) -> Self::Conn;
+    fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Self::Conn>;
 }
 
 #[async_trait]
@@ -115,7 +117,12 @@ pub trait Network {
 
     fn close(&self) -> Result<(), Error>;
 
-    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, proto_id: ProtocolId) -> Result<Self::Stream, Error>;
+    async fn new_stream(
+        &self,
+        ctx: Context,
+        peer_id: &PeerId,
+        proto_id: ProtocolId,
+    ) -> Result<Self::Stream, Error>;
 
     async fn listen(laddr: Multiaddr) -> Result<(), Error>;
 }

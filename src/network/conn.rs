@@ -1,8 +1,9 @@
-use super::{Direction, QuicStream, ProtocolId};
+use super::{Direction, ProtocolId, QuicStream};
 use crate::{
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
-    network, transport::{CapableConn, self},
+    network,
+    transport::{self, CapableConn},
 };
 
 use anyhow::Error;
@@ -16,6 +17,16 @@ pub struct QuicConn {
     inner: transport::QuicConn,
     direction: Direction,
     streams: Arc<Mutex<Vec<QuicStream>>>,
+}
+
+impl QuicConn {
+    pub fn new(conn: transport::QuicConn, direction: Direction) -> Self {
+        QuicConn {
+            inner: conn,
+            direction,
+            streams: Default::default(),
+        }
+    }
 }
 
 impl transport::ConnSecurity for QuicConn {

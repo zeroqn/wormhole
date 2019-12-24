@@ -1,12 +1,12 @@
 mod common;
 use common::{make_xenovox, CommonError};
 
-use creep::Context;
-use futures::io::{AsyncReadExt, AsyncWriteExt};
-use futures::channel::mpsc::unbounded;
-use futures::stream::StreamExt;
 use anyhow::Error;
-use wormhole::transport::{Listener, CapableConn, Transport};
+use creep::Context;
+use futures::channel::mpsc::unbounded;
+use futures::io::{AsyncReadExt, AsyncWriteExt};
+use futures::stream::StreamExt;
+use wormhole::transport::{CapableConn, Listener, Transport};
 
 #[tokio::test]
 async fn should_able_to_communicate_with_remote_peer() -> Result<(), Error> {
@@ -15,7 +15,8 @@ async fn should_able_to_communicate_with_remote_peer() -> Result<(), Error> {
     let msg = "watch 20-12-2019";
     let (msg_tx, mut msg_rx) = unbounded();
 
-    let (_geralt_xenovox, mut geralt_listener, geralt_maddr, geralt_pubkey) = make_xenovox(("127.0.0.1", 2077)).await?;
+    let (_geralt_xenovox, mut geralt_listener, geralt_maddr, geralt_pubkey) =
+        make_xenovox(("127.0.0.1", 2077)).await?;
     let (ciri_xenovox, ..) = make_xenovox(("0.0.0.0", 2020)).await?;
 
     tokio::spawn(async move {
@@ -29,7 +30,9 @@ async fn should_able_to_communicate_with_remote_peer() -> Result<(), Error> {
         Ok::<(), Error>(())
     });
 
-    let ciri_conn = ciri_xenovox.dial(Context::new(), geralt_maddr, geralt_pubkey.peer_id()).await?;
+    let ciri_conn = ciri_xenovox
+        .dial(Context::new(), geralt_maddr, geralt_pubkey.peer_id())
+        .await?;
     let mut ciri_stream = ciri_conn.open_stream().await?;
 
     ciri_stream.write_all(msg.as_bytes()).await?;

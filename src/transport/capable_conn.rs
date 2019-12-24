@@ -1,5 +1,5 @@
-use super::{CapableConn, Transport, ConnSecurity, ConnMultiaddr};
-use super::{QuicMuxedStream, RESET_ERR_CODE, QuicTransport};
+use super::{CapableConn, ConnMultiaddr, ConnSecurity, Transport};
+use super::{QuicMuxedStream, QuicTransport, RESET_ERR_CODE};
 use crate::{
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
