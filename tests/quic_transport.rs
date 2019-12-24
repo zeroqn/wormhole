@@ -1,5 +1,5 @@
 mod common;
-use common::{CommonError, random_keypair};
+use common::{random_keypair, CommonError};
 
 use anyhow::Error;
 use creep::Context;
@@ -7,9 +7,9 @@ use futures::channel::mpsc::unbounded;
 use futures::io::{AsyncReadExt, AsyncWriteExt};
 use futures::stream::StreamExt;
 use wormhole::{
-    transport::{CapableConn, Listener, Transport, QuicTransport, QuicListener},
-    multiaddr::{Multiaddr, MultiaddrExt},
     crypto::PublicKey,
+    multiaddr::{Multiaddr, MultiaddrExt},
+    transport::{CapableConn, Listener, QuicListener, QuicTransport, Transport},
 };
 
 use std::net::ToSocketAddrs;

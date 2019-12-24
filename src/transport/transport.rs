@@ -7,11 +7,14 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
-use tracing::{info, debug};
-use quinn::{ClientConfig, Endpoint, NewConnection, ServerConfig};
 use futures::lock::Mutex;
+use quinn::{ClientConfig, Endpoint, NewConnection, ServerConfig};
+use tracing::{debug, info};
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum TransportError {
@@ -84,7 +87,11 @@ impl Transport for QuicTransport {
 
         let sock_addr = raddr.to_socket_addr();
         let endpoint = {
-            self.endpoint.lock().await.clone().expect("impossible no listen")
+            self.endpoint
+                .lock()
+                .await
+                .clone()
+                .expect("impossible no listen")
         };
 
         let NewConnection {
@@ -113,7 +120,7 @@ impl Transport for QuicTransport {
             if let Err(err) = driver.await {
                 info!("dial connection driver: {}", err);
             }
-            
+
             is_closed_by_driver.store(true, Ordering::SeqCst);
         });
 

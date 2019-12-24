@@ -6,11 +6,11 @@ use crate::{
     tls::certificate::P2PSelfSignedCertificate,
 };
 
-use tracing::debug;
 use anyhow::Error;
 use async_trait::async_trait;
 use futures::{lock::Mutex, stream::StreamExt};
 use quinn::{Connection, ConnectionError, IncomingBiStreams};
+use tracing::debug;
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -134,7 +134,7 @@ impl CapableConn for QuicConn {
         }
 
         let (send, read) = opt_stream.ok_or(ConnectionError::LocallyClosed)??;
-        
+
         debug!("got bi-stream from {}", self.remote_peer_id);
 
         Ok(QuicMuxedStream::new(read, send))
@@ -151,7 +151,7 @@ impl CapableConn for QuicConn {
 
         self.is_closed.store(true, Ordering::SeqCst);
         self.conn.close(RESET_ERR_CODE.into(), b"close");
-        
+
         debug!("close connection to peer {}", self.remote_peer_id);
 
         Ok(())

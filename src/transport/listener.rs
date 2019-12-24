@@ -7,10 +7,16 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use tracing::{info, debug};
 use quinn::{Incoming, NewConnection};
+use tracing::{debug, info};
 
-use std::{net::SocketAddr, sync::{Arc, atomic::{AtomicBool, Ordering}}};
+use std::{
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum ListenerError {
@@ -50,7 +56,10 @@ impl Listener for QuicListener {
             .await
             .ok_or(ListenerError::ClosedOrDriverLost)?;
 
-        debug!("got incoming connection attampt from {}", connecting.remote_address());
+        debug!(
+            "got incoming connection attampt from {}",
+            connecting.remote_address()
+        );
 
         let NewConnection {
             driver,
@@ -88,7 +97,10 @@ impl Listener for QuicListener {
     }
 
     fn close(&mut self) -> Result<(), Error> {
-        debug!("close transprt listener {:?}", self.transport.local_multiaddr());
+        debug!(
+            "close transprt listener {:?}",
+            self.transport.local_multiaddr()
+        );
         drop(self.incoming.take());
 
         Ok(())

@@ -8,7 +8,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
-use tracing::{error, debug};
+use tracing::{debug, error};
 
 #[derive(thiserror::Error, Debug)]
 pub enum DialerError {

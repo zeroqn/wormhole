@@ -14,13 +14,11 @@ use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
 use futures::{channel::oneshot, lock::Mutex};
-use tracing::{error, debug};
+use tracing::{debug, error};
 
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -94,7 +92,13 @@ where
             let conn_handler = self.conn_handler.clone();
             let stream_handler = self.stream_handler.clone();
 
-            tokio::spawn(Self::drive_conn(conn, peer_store, conn_pool, conn_handler, stream_handler));
+            tokio::spawn(Self::drive_conn(
+                conn,
+                peer_store,
+                conn_pool,
+                conn_handler,
+                stream_handler,
+            ));
         }
     }
 
