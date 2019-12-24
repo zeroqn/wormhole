@@ -13,16 +13,14 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
-use futures::{channel::oneshot, future::Future, lock::Mutex, ready};
+use futures::{channel::oneshot, lock::Mutex};
 use tracing::{error, debug};
 
 use std::{
-    pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    task::{Context as TaskContext, Poll},
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -73,6 +71,33 @@ where
         (driver, driver_ref)
     }
 
+    async fn accept(&mut self) -> Result<(), Error> {
+        loop {
+            if self.closing.load(Ordering::SeqCst) {
+                // Simply drop should not cause error
+                if let Err(_) = self.listener.close() {
+                    unreachable!()
+                }
+
+                let close_done = self.close_done.take().expect("impossible, repeat close");
+
+                if let Err(_) = close_done.send(()) {
+                    return Err(NetworkError::LostClosedSignal.into());
+                } else {
+                    return Ok(());
+                }
+            }
+
+            let conn = QuicConn::new(self.listener.accept().await?, Direction::Inbound);
+            let peer_store = self.peer_store.clone();
+            let conn_pool = self.conn_pool.clone();
+            let conn_handler = self.conn_handler.clone();
+            let stream_handler = self.stream_handler.clone();
+
+            tokio::spawn(Self::drive_conn(conn, peer_store, conn_pool, conn_handler, stream_handler));
+        }
+    }
+
     async fn drive_conn(
         conn: QuicConn,
         peer_store: PeerStore,
@@ -121,54 +146,6 @@ where
                 error!("close {} connection in driver: {}", peer_id, err);
             }
         }
-    }
-}
-
-impl<CH, SH> Future for QuicListenerDriver<CH, SH>
-where
-    CH: RemoteConnHandler<Conn = QuicConn> + 'static + Unpin,
-    SH: RemoteStreamHandler<Stream = QuicStream> + 'static + Unpin,
-{
-    type Output = Result<(), Error>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut TaskContext) -> Poll<Self::Output> {
-        if self.closing.load(Ordering::SeqCst) {
-            let driver = self.get_mut();
-            // Simply drop should not cause error
-            if let Err(_) = driver.listener.close() {
-                unreachable!()
-            }
-
-            let close_done = driver.close_done.take().expect("impossible, repeat close");
-
-            if let Err(_) = close_done.send(()) {
-                return Poll::Ready(Err(NetworkError::LostClosedSignal.into()));
-            } else {
-                return Poll::Ready(Ok(()));
-            }
-        }
-
-        let driver = self.get_mut();
-        let new_conn = match ready!(Future::poll(Pin::new(&mut driver.listener.accept()), cx)) {
-            Err(err) => return Poll::Ready(Err(err)),
-            Ok(conn) => conn,
-        };
-
-        let conn = QuicConn::new(new_conn, Direction::Inbound);
-        let peer_store = driver.peer_store.clone();
-        let conn_pool = driver.conn_pool.clone();
-        let conn_handler = driver.conn_handler.clone();
-        let stream_handler = driver.stream_handler.clone();
-
-        tokio::spawn(Self::drive_conn(
-            conn,
-            peer_store,
-            conn_pool,
-            conn_handler,
-            stream_handler,
-        ));
-
-        Poll::Pending
     }
 }
 
@@ -273,10 +250,10 @@ where
         }
 
         let new_listener = self.transport.listen(laddr.clone()).await?;
-        let (driver, driver_ref) = QuicListenerDriver::new(self.clone(), new_listener);
+        let (mut driver, driver_ref) = QuicListenerDriver::new(self.clone(), new_listener);
 
         tokio::spawn(async move {
-            if let Err(err) = driver.await {
+            if let Err(err) = driver.accept().await {
                 error!("listener driver: {}", err);
             }
         });
