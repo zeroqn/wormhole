@@ -217,6 +217,7 @@ where
     SH: RemoteStreamHandler<Stream = QuicStream> + 'static + Unpin,
 {
     type Stream = QuicStream;
+    type Conn = QuicConn;
 
     async fn close(&self) -> Result<(), Error> {
         self.dialer.close().await?;

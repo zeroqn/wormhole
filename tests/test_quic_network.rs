@@ -43,6 +43,7 @@ impl RemoteStreamHandler for EchoStreamHandler {
             .read_to_string(&mut msg)
             .await
             .expect("read message error");
+
         self.0.unbounded_send(msg).expect("send message error");
     }
 }
