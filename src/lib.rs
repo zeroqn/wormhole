@@ -1,3 +1,4 @@
+pub mod bootstrap;
 pub mod crypto;
 pub mod host;
 pub mod multiaddr;
