@@ -151,7 +151,7 @@ pub trait Dialer {
 
 #[async_trait]
 pub trait Network: Send + Sync + Clone {
-    type Stream;
+    type Stream: Stream + Send + Unpin;
     type Conn;
 
     async fn close(&self) -> Result<(), Error>;

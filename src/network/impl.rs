@@ -1,6 +1,6 @@
 use super::{
-    Conn, Connectedness, Dialer, Direction, Network, Protocol, QuicConn, QuicConnPool,
-    QuicDialer, QuicStream, RemoteConnHandler, RemoteStreamHandler,
+    Conn, Connectedness, Dialer, Direction, Network, Protocol, QuicConn, QuicConnPool, QuicDialer,
+    QuicStream, RemoteConnHandler, RemoteStreamHandler,
 };
 use crate::{
     crypto::{PeerId, PrivateKey},
@@ -207,6 +207,12 @@ where
             conn_handler: conn_handler,
             stream_handler: stream_handler,
         })
+    }
+
+    pub async fn connect(&self, ctx: Context, peer_id: &PeerId) -> Result<(), Error> {
+        self.dialer.dial_peer(ctx, peer_id).await?;
+
+        Ok(())
     }
 }
 
