@@ -22,7 +22,7 @@ use creep::Context;
 use derive_more::Display;
 use futures::io::{AsyncRead, AsyncWrite};
 
-use std::fmt;
+use std::{fmt, ops::Deref};
 
 pub enum NetworkEvent<N>
 where
@@ -57,21 +57,42 @@ pub enum Direction {
 }
 
 #[derive(Display, PartialEq, Eq, Hash, Clone, Copy)]
-#[display(fmt = "protocol {} => {}", id, name)]
-pub struct ProtocolId {
-    id: u64,
-    name: &'static str,
-}
+#[display(fmt = "{}", _0)]
+pub struct ProtocolId(u64);
 
-impl fmt::Debug for ProtocolId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.to_string().fmt(f)
+impl Deref for ProtocolId {
+    type Target = u64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
-impl ProtocolId {
+impl Into<ProtocolId> for u64 {
+    fn into(self) -> ProtocolId {
+        ProtocolId(self)
+    }
+}
+
+#[derive(Display, PartialEq, Eq, Hash, Clone, Copy)]
+#[display(fmt = "protocol {} => {}", id, name)]
+pub struct Protocol {
+    pub(crate) id: ProtocolId,
+    pub(crate) name: &'static str,
+}
+
+impl Protocol {
     pub fn new(id: u64, name: &'static str) -> Self {
-        ProtocolId { id, name }
+        Protocol {
+            id: id.into(),
+            name,
+        }
+    }
+}
+
+impl fmt::Debug for Protocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.to_string().fmt(f)
     }
 }
 
@@ -80,9 +101,9 @@ impl ProtocolId {
 pub trait Stream: AsyncWrite + AsyncRead + futures::stream::Stream<Item = Bytes> + Clone {
     type Conn: Clone + Send;
 
-    fn protocol(&self) -> Option<ProtocolId>;
+    fn protocol(&self) -> Option<Protocol>;
 
-    fn set_protocol(&mut self, proto_id: ProtocolId);
+    fn set_protocol(&mut self, proto: Protocol);
 
     fn direction(&self) -> Direction;
 
@@ -97,7 +118,7 @@ pub trait Stream: AsyncWrite + AsyncRead + futures::stream::Stream<Item = Bytes>
 pub trait Conn: ConnSecurity + ConnMultiaddr + Clone + Send {
     type Stream;
 
-    async fn new_stream(&self, proto_id: ProtocolId) -> Result<Self::Stream, Error>;
+    async fn new_stream(&self, proto: Protocol) -> Result<Self::Stream, Error>;
 
     async fn streams(&self) -> Vec<Self::Stream>;
 
@@ -139,7 +160,7 @@ pub trait Network: Send + Sync + Clone {
         &self,
         ctx: Context,
         peer_id: &PeerId,
-        proto_id: ProtocolId,
+        proto: Protocol,
     ) -> Result<Self::Stream, Error>;
 
     async fn listen(&mut self, laddr: Multiaddr) -> Result<(), Error>;

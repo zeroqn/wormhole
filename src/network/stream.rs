@@ -1,4 +1,4 @@
-use super::{Direction, ProtocolId, QuicConn};
+use super::{Direction, Protocol, QuicConn};
 use crate::{
     network,
     transport::{self, ConnSecurity, MuxedStream},
@@ -25,7 +25,7 @@ use std::{
 #[derive(Clone)]
 pub struct QuicStream {
     inner: Arc<Mutex<transport::QuicMuxedStream>>,
-    proto_id: Option<ProtocolId>,
+    proto: Option<Protocol>,
     direction: Direction,
     conn: QuicConn,
 }
@@ -38,7 +38,7 @@ impl QuicStream {
     ) -> Self {
         QuicStream {
             inner: Arc::new(Mutex::new(muxed_stream)),
-            proto_id: None,
+            proto: None,
             direction,
             conn,
         }
@@ -65,7 +65,7 @@ impl AsyncRead for QuicStream {
         debug!(
             "poll_read on peer stream {} using proto {:?}",
             stream.conn.remote_peer(),
-            stream.proto_id
+            stream.proto
         );
 
         AsyncRead::poll_read(Pin::new(&mut *muxed_stream), cx, buf)
@@ -84,7 +84,7 @@ impl AsyncWrite for QuicStream {
             "poll_write {} bytes to peer stream {} using proto {:?}",
             buf.len(),
             stream.conn.remote_peer(),
-            stream.proto_id
+            stream.proto
         );
 
         AsyncWrite::poll_write(Pin::new(&mut *muxed_stream), cx, buf)
@@ -96,7 +96,7 @@ impl AsyncWrite for QuicStream {
         debug!(
             "poll_flush to peer stream {} using proto {:?}",
             stream.conn.remote_peer(),
-            stream.proto_id
+            stream.proto
         );
 
         AsyncWrite::poll_flush(Pin::new(&mut *muxed_stream), cx)
@@ -108,7 +108,7 @@ impl AsyncWrite for QuicStream {
         debug!(
             "poll close to peer stream {} using proto {:?}",
             stream.conn.remote_peer(),
-            stream.proto_id
+            stream.proto
         );
 
         AsyncWrite::poll_close(Pin::new(&mut *muxed_stream), cx)
@@ -128,17 +128,17 @@ impl futures::stream::Stream for QuicStream {
 impl network::Stream for QuicStream {
     type Conn = QuicConn;
 
-    fn protocol(&self) -> Option<ProtocolId> {
-        self.proto_id.clone()
+    fn protocol(&self) -> Option<Protocol> {
+        self.proto.clone()
     }
 
-    fn set_protocol(&mut self, proto_id: ProtocolId) {
+    fn set_protocol(&mut self, proto: Protocol) {
         debug!(
             "set peer stream {} to proto {}",
             self.conn.remote_peer(),
-            proto_id
+            proto
         );
-        self.proto_id = Some(proto_id);
+        self.proto= Some(proto);
     }
 
     fn direction(&self) -> Direction {
