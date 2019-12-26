@@ -24,13 +24,16 @@ use futures::io::{AsyncRead, AsyncWrite};
 
 use std::fmt;
 
-pub enum NetworkEvent<Network, Conn, Stream> {
-    Listen(Network, Multiaddr),
-    ListenClose(Network, Multiaddr),
-    Connected(Network, Conn),
-    Disconnected(Network, Conn),
-    OpenedStream(Network, Stream),
-    ClosedStream(Network, Stream),
+pub enum NetworkEvent<N>
+where
+    N: Network,
+{
+    Listen(N, Multiaddr),
+    ListenClose(N, Multiaddr),
+    Connected(N, <N as Network>::Conn),
+    Disconnected(N, <N as Network>::Conn),
+    OpenedStream(N, <N as Network>::Stream),
+    ClosedStream(N, <N as Network>::Stream),
 }
 
 #[derive(Debug, Display, PartialEq, Eq, Clone, Copy)]
@@ -128,6 +131,7 @@ pub trait Dialer {
 #[async_trait]
 pub trait Network: Send + Sync + Clone {
     type Stream;
+    type Conn;
 
     async fn close(&self) -> Result<(), Error>;
 
