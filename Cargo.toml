@@ -30,7 +30,7 @@ lazy_static = "1.4"
 secp256k1 = "0.17"
 bs58 = "0.3"
 webpki = "0.21"
-futures_codec = "0.3"
+futures_codec = { git = "https://github.com/matthunz/futures-codec", rev = "218e59b" }
 dyn-clone = "1.0.1"
 
 [dev-dependencies]
