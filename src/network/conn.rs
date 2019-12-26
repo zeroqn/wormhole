@@ -1,4 +1,4 @@
-use super::{Direction, ProtocolId, QuicStream};
+use super::{Direction, Protocol, QuicStream};
 use crate::{
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
@@ -70,17 +70,17 @@ impl transport::ConnMultiaddr for QuicConn {
 impl network::Conn for QuicConn {
     type Stream = QuicStream;
 
-    async fn new_stream(&self, proto_id: ProtocolId) -> Result<Self::Stream, Error> {
+    async fn new_stream(&self, proto: Protocol) -> Result<Self::Stream, Error> {
         use network::Stream;
 
         let muxed_stream = self.inner.open_stream().await?;
         let mut new_stream = QuicStream::new(muxed_stream, self.direction, self.clone());
-        new_stream.set_protocol(proto_id);
+        new_stream.set_protocol(proto);
 
         debug!(
             "create new stream to peer {} using proto {}",
             self.remote_peer(),
-            proto_id
+            proto
         );
 
         {

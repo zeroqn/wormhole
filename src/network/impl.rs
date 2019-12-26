@@ -1,5 +1,5 @@
 use super::{
-    Conn, Connectedness, Dialer, Direction, Network, ProtocolId, QuicConn, QuicConnPool,
+    Conn, Connectedness, Dialer, Direction, Network, Protocol, QuicConn, QuicConnPool,
     QuicDialer, QuicStream, RemoteConnHandler, RemoteStreamHandler,
 };
 use crate::{
@@ -235,16 +235,16 @@ where
         &self,
         ctx: Context,
         peer_id: &PeerId,
-        proto_id: ProtocolId,
+        proto: Protocol,
     ) -> Result<Self::Stream, Error> {
-        debug!("new stream to {} using protocol {}", peer_id, proto_id);
+        debug!("new stream to {} using protocol {}", peer_id, proto);
 
         let conn = match self.dialer.conn_to_peer(peer_id).await {
             Some(conn) => conn,
             None => self.dialer.dial_peer(ctx, peer_id).await?,
         };
 
-        conn.new_stream(proto_id).await
+        conn.new_stream(proto).await
     }
 
     async fn listen(&mut self, laddr: Multiaddr) -> Result<(), Error> {

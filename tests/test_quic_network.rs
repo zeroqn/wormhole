@@ -11,7 +11,7 @@ use wormhole::{
     crypto::PublicKey,
     multiaddr::{Multiaddr, MultiaddrExt},
     network::{
-        Connectedness, Network, ProtocolId, QuicConn, QuicNetwork, QuicStream, RemoteConnHandler,
+        Connectedness, Network, Protocol, QuicConn, QuicNetwork, QuicStream, RemoteConnHandler,
         RemoteStreamHandler,
     },
     peer_store::{PeerInfo, PeerStore},
@@ -85,7 +85,7 @@ async fn test_quic_network_with_remote_peer() -> Result<(), Error> {
     )?;
 
     let peer_store = PeerStore::default();
-    let proto_id = ProtocolId::new(1, "drama");
+    let proto = Protocol::new(1, "drama");
 
     let msg = "watch 20-12-2019";
 
@@ -94,7 +94,7 @@ async fn test_quic_network_with_remote_peer() -> Result<(), Error> {
     let (ciri_xenovox, ..) = make_xenovox(("127.0.0.1", 2020), peer_store.clone()).await?;
 
     let mut ciri_stream = ciri_xenovox
-        .new_stream(Context::new(), &geralt_pubkey.peer_id(), proto_id)
+        .new_stream(Context::new(), &geralt_pubkey.peer_id(), proto)
         .await?;
 
     ciri_stream.write_all(msg.as_bytes()).await?;
