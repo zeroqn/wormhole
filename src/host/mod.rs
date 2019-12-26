@@ -73,9 +73,9 @@ pub trait PeerStore: Sync + Send {
 
 #[async_trait]
 pub trait Host {
-    type Switch;
+    type Switch: Switch;
     type Network: network::Network;
-    type PeerStore;
+    type PeerStore: PeerStore;
 
     fn peer_id(&self) -> &PeerId;
 
