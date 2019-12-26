@@ -1,7 +1,7 @@
 use super::RawStream;
 
 use futures::{
-    Sink, Stream,
+    Sink, Stream
 };
 use futures_codec::{Framed, LengthCodec, Encoder};
 
@@ -10,12 +10,12 @@ use std::{
     task::{Context, Poll},
 };
 
-pub struct FramedStream<S: RawStream> {
-    inner: Framed<S, LengthCodec>,
+pub struct FramedStream {
+    inner: Framed<Box<dyn RawStream>, LengthCodec>,
 }
 
-impl<S: RawStream> FramedStream<S> {
-    pub fn new(stream: S) -> Self {
+impl FramedStream {
+    pub fn new(stream: Box<dyn RawStream>) -> Self {
         FramedStream {
             inner: Framed::new(stream, LengthCodec),
         }
@@ -28,15 +28,15 @@ impl<S: RawStream> FramedStream<S> {
     }
 }
 
-impl<S: RawStream> Stream for FramedStream<S> {
-    type Item = <Framed<S, LengthCodec> as Stream>::Item;
+impl Stream for FramedStream {
+    type Item = <Framed<Box<dyn RawStream>, LengthCodec> as Stream>::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         Stream::poll_next(Pin::new(&mut self.get_mut().inner), cx)
     }
 }
 
-impl<S: RawStream> Sink<<LengthCodec as Encoder>::Item> for FramedStream<S> {
+impl Sink<<LengthCodec as Encoder>::Item> for FramedStream {
     type Error = <LengthCodec as Encoder>::Error;
 
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {

@@ -46,7 +46,7 @@ pub trait ProtocolHandler: Send + Sync + DynClone {
 
     fn proto_name(&self) -> &'static str;
 
-    async fn handle(&self, stream: &mut dyn RawStream);
+    async fn handle(&self, stream: &mut FramedStream);
 }
 
 #[async_trait]
@@ -58,10 +58,10 @@ pub trait Switch: Sync + Send + DynClone {
 
     async fn remove_handler(&self, proto_id: ProtocolId);
 
-    async fn negotiate(&self, stream: &mut dyn RawStream) -> Result<Box<dyn ProtocolHandler>, Error>;
+    async fn negotiate(&self, stream: &mut FramedStream) -> Result<Box<dyn ProtocolHandler>, Error>;
 
-    async fn handle(&self, mut stream: Box<dyn RawStream>) {
-        let proto_handler = match self.negotiate(&mut *stream).await {
+    async fn handle(&self, mut stream: FramedStream) {
+        let proto_handler = match self.negotiate(&mut stream).await {
             Ok(handler) => handler,
             Err(_) => {
                 // Reset stream
@@ -69,7 +69,7 @@ pub trait Switch: Sync + Send + DynClone {
             }
         };
 
-        proto_handler.handle(&mut *stream).await
+        proto_handler.handle(&mut stream).await
     }
 }
 
@@ -100,7 +100,7 @@ pub trait Host {
 
     async fn connect(&self, ctx: Context, peer_id: &PeerId, raddr: Option<&Multiaddr>) -> Result<(), Error>;
 
-    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, protocol: Protocol) -> Result<FramedStream<<Self::Network as network::Network>::Stream>, Error>;
+    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, protocol: Protocol) -> Result<FramedStream, Error>;
 
     async fn close(&self) -> Result<(), Error>;
 

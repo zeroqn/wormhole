@@ -1,13 +1,12 @@
 pub mod message;
 pub use message::{Offer, Use, UseProtocol, OfferProtocol};
 
-use super::{ProtocolHandler, RawStream, Switch, MatchProtocol};
+use super::{ProtocolHandler, Switch, MatchProtocol, FramedStream};
 use crate::network::{Protocol, ProtocolId};
 
 use async_trait::async_trait;
 use anyhow::{Error, Context};
 use futures::{lock::Mutex, stream::TryStreamExt};
-use futures_codec::{Framed, LengthCodec};
 
 use std::{
     borrow::Borrow,
@@ -109,13 +108,11 @@ impl Switch for DefaultSwitch {
         self.register.lock().await.remove(&proto_id);
     }
 
-    async fn negotiate(&self, mut stream: &mut dyn RawStream) -> Result<Box<dyn ProtocolHandler>, Error> {
+    async fn negotiate(&self, stream: &mut FramedStream) -> Result<Box<dyn ProtocolHandler>, Error> {
         use prost::Message;
         use SwitchError::*;
 
-        let mut framed = Framed::new(&mut stream, LengthCodec);
-
-        let first_msg = framed.try_next().await?.ok_or(NoProtocolOffer)?;
+        let first_msg = stream.try_next().await?.ok_or(NoProtocolOffer)?;
         let offer = Offer::decode(first_msg).context("first got message must be offer")?;
         let protocols_in_offer = offer.into_protocols();
 

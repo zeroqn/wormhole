@@ -44,7 +44,7 @@ impl RemoteStreamHandler for DefaultStreamHandler {
     type Stream = QuicStream;
 
     async fn handle(&self, stream: Self::Stream) {
-        self.switch.handle(Box::new(stream)).await
+        self.switch.handle(FramedStream::new(Box::new(stream))).await
     }
 }
 
@@ -77,7 +77,7 @@ impl DefaultHost {
     }
 
     // TODO: multiple protocols support
-    async fn negotiate(_ctx: Context, framed_stream: &mut FramedStream<QuicStream>, protocol: Protocol) -> Result<(), Error> {
+    async fn negotiate(_ctx: Context, framed_stream: &mut FramedStream, protocol: Protocol) -> Result<(), Error> {
         use HostError::*;
 
         let offer = Offer::with_names(vec![protocol.name.to_owned()]);
@@ -115,9 +115,9 @@ impl Host for DefaultHost {
         Ok(self.network.connect(ctx, peer_id).await?)
     }
 
-    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, protocol: Protocol) -> Result<FramedStream<QuicStream>, Error> {
+    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, protocol: Protocol) -> Result<FramedStream, Error> {
         let raw_stream = self.network.new_stream(ctx.clone(), peer_id, protocol).await?;
-        let mut framed_stream = FramedStream::new(raw_stream);
+        let mut framed_stream = FramedStream::new(Box::new(raw_stream));
 
         if let Err(err) = Self::negotiate(ctx, &mut framed_stream, protocol).await {
             framed_stream.reset().await;
