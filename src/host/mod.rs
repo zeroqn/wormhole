@@ -1,9 +1,11 @@
 pub mod switch;
+pub mod r#impl;
+pub mod framed_stream;
 pub use switch::DefaultSwitch;
+pub use framed_stream::FramedStream;
 
 use crate::{network::{self, Protocol, ProtocolId, NetworkEvent, Connectedness}, crypto::{PeerId, PublicKey}, multiaddr::Multiaddr};
 
-use bytes::Bytes;
 use futures::{channel::mpsc, io::{AsyncRead, AsyncWrite}};
 use anyhow::Error;
 use async_trait::async_trait;
@@ -17,7 +19,22 @@ pub trait ResetStream {
     async fn reset(&mut self);
 }
 
-pub trait RawStream: AsyncRead + AsyncWrite + ResetStream + futures::stream::Stream<Item = Bytes> + Send + Unpin {}
+#[async_trait]
+impl<T> ResetStream for T
+where
+    T: network::Stream + Send + Unpin
+{
+    async fn reset(&mut self) {
+        self.reset().await
+    }
+}
+
+impl<T> RawStream for T
+where
+    T: network::Stream + Send + Unpin
+{}
+
+pub trait RawStream: AsyncRead + AsyncWrite + ResetStream + Send + Unpin {}
 
 pub trait MatchProtocol<'a>: Send + DynClone {
     fn r#match(&self, name: &'a str) -> bool;
@@ -73,9 +90,9 @@ pub trait PeerStore: Sync + Send {
 
 #[async_trait]
 pub trait Host {
-    type Switch: Switch;
+    type Switch;
     type Network: network::Network;
-    type PeerStore: PeerStore;
+    type PeerStore;
 
     fn peer_id(&self) -> &PeerId;
 
@@ -83,7 +100,7 @@ pub trait Host {
 
     async fn connect(&self, ctx: Context, peer_id: &PeerId, raddr: Option<&Multiaddr>) -> Result<(), Error>;
 
-    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, proto: Protocol) -> Result<<Self::Network as network::Network>::Stream, Error>;
+    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, protocol: Protocol) -> Result<FramedStream<<Self::Network as network::Network>::Stream>, Error>;
 
     async fn close(&self) -> Result<(), Error>;
 

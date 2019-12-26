@@ -208,6 +208,12 @@ where
             stream_handler: stream_handler,
         })
     }
+
+    pub async fn connect(&self, ctx: Context, peer_id: &PeerId) -> Result<(), Error> {
+        self.dialer.dial_peer(ctx, peer_id).await?;
+
+        Ok(())
+    }
 }
 
 #[async_trait]
