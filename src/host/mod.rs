@@ -1,20 +1,27 @@
-pub mod switch;
-pub mod r#impl;
 pub mod framed_stream;
-pub use switch::DefaultSwitch;
+pub mod r#impl;
+pub mod switch;
 pub use framed_stream::FramedStream;
 pub use r#impl::{DefaultHost, DefaultStreamHandler};
+pub use switch::DefaultSwitch;
 
-use crate::{network::{self, Protocol, ProtocolId, NetworkEvent, Connectedness}, crypto::{PeerId, PublicKey}, multiaddr::Multiaddr};
+use crate::{
+    crypto::{PeerId, PublicKey},
+    multiaddr::Multiaddr,
+    network::{self, Connectedness, NetworkEvent, Protocol, ProtocolId},
+};
 
-use futures::{channel::mpsc, io::{AsyncRead, AsyncWrite}};
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
 use dyn_clone::DynClone;
-use tracing::{error, debug};
+use futures::{
+    channel::mpsc,
+    io::{AsyncRead, AsyncWrite},
+};
+use tracing::{debug, error};
 
-use std::{collections::HashSet};
+use std::collections::HashSet;
 
 #[async_trait]
 pub trait ResetStream {
@@ -24,17 +31,14 @@ pub trait ResetStream {
 #[async_trait]
 impl<T> ResetStream for T
 where
-    T: network::Stream + Send + Unpin
+    T: network::Stream + Send + Unpin,
 {
     async fn reset(&mut self) {
         self.reset().await
     }
 }
 
-impl<T> RawStream for T
-where
-    T: network::Stream + Send + Unpin
-{}
+impl<T> RawStream for T where T: network::Stream + Send + Unpin {}
 
 pub trait RawStream: AsyncRead + AsyncWrite + ResetStream + Send + Unpin {}
 
@@ -56,11 +60,16 @@ pub trait Switch: Sync + Send + DynClone {
     async fn add_handler(&self, handler: impl ProtocolHandler + 'static) -> Result<(), Error>;
 
     // Match protocol name
-    async fn add_match_handler(&self, r#match: impl for<'a> MatchProtocol<'a> + 'static, handler: impl ProtocolHandler + 'static) -> Result<(), Error>;
+    async fn add_match_handler(
+        &self,
+        r#match: impl for<'a> MatchProtocol<'a> + 'static,
+        handler: impl ProtocolHandler + 'static,
+    ) -> Result<(), Error>;
 
     async fn remove_handler(&self, proto_id: ProtocolId);
 
-    async fn negotiate(&self, stream: &mut FramedStream) -> Result<Box<dyn ProtocolHandler>, Error>;
+    async fn negotiate(&self, stream: &mut FramedStream)
+        -> Result<Box<dyn ProtocolHandler>, Error>;
 
     async fn handle(&self, mut stream: FramedStream) {
         let proto_handler = match self.negotiate(&mut stream).await {
@@ -106,13 +115,27 @@ pub trait Host {
     async fn add_handler(&self, handler: impl ProtocolHandler + 'static) -> Result<(), Error>;
 
     // Match protocol name
-    async fn add_match_handler(&self, r#match: impl for<'a> MatchProtocol<'a> + 'static, handler: impl ProtocolHandler + 'static) -> Result<(), Error>;
+    async fn add_match_handler(
+        &self,
+        r#match: impl for<'a> MatchProtocol<'a> + 'static,
+        handler: impl ProtocolHandler + 'static,
+    ) -> Result<(), Error>;
 
     async fn remove_handler(&self, proto_id: ProtocolId);
 
-    async fn connect(&self, ctx: Context, peer_id: &PeerId, raddr: Option<&Multiaddr>) -> Result<(), Error>;
+    async fn connect(
+        &self,
+        ctx: Context,
+        peer_id: &PeerId,
+        raddr: Option<&Multiaddr>,
+    ) -> Result<(), Error>;
 
-    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, protocol: Protocol) -> Result<FramedStream, Error>;
+    async fn new_stream(
+        &self,
+        ctx: Context,
+        peer_id: &PeerId,
+        protocol: Protocol,
+    ) -> Result<FramedStream, Error>;
 
     async fn close(&self) -> Result<(), Error>;
 

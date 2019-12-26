@@ -1,18 +1,18 @@
 mod common;
 use common::{random_keypair, CommonError};
 
-use tracing::error;
 use anyhow::Error;
 use async_trait::async_trait;
-use creep::Context;
-use futures::{TryStreamExt, SinkExt};
 use bytes::Bytes;
+use creep::Context;
+use futures::{SinkExt, TryStreamExt};
+use tracing::error;
 
 use wormhole::{
     crypto::PublicKey,
-    host::{DefaultHost, Host, ProtocolHandler, FramedStream},
+    host::{DefaultHost, FramedStream, Host, ProtocolHandler},
     multiaddr::{Multiaddr, MultiaddrExt},
-    network::{Protocol, ProtocolId, Connectedness},
+    network::{Connectedness, Protocol, ProtocolId},
     peer_store::{PeerInfo, PeerStore},
 };
 
@@ -51,7 +51,10 @@ impl ProtocolHandler for EchoProtocol {
     }
 }
 
-async fn make_xenovox<A: ToSocketAddrs>(addr: A, peer_store: PeerStore) -> Result<(DefaultHost, PublicKey), Error> {
+async fn make_xenovox<A: ToSocketAddrs>(
+    addr: A,
+    peer_store: PeerStore,
+) -> Result<(DefaultHost, PublicKey), Error> {
     let (sk, pk) = random_keypair();
 
     let mut sock_addr = addr.to_socket_addrs()?;
@@ -84,11 +87,18 @@ async fn test_default_host() -> Result<(), Error> {
     let (ciri_xenovox, ..) = make_xenovox(("127.0.0.1", 2020), peer_store.clone()).await?;
 
     let mut ciri_stream = ciri_xenovox
-        .new_stream(Context::new(), &geralt_pubkey.peer_id(), EchoProtocol::proto())
+        .new_stream(
+            Context::new(),
+            &geralt_pubkey.peer_id(),
+            EchoProtocol::proto(),
+        )
         .await?;
 
     ciri_stream.send(Bytes::from(msg)).await?;
-    let echoed = ciri_stream.try_next().await?.ok_or(CommonError::NoMessage)?;
+    let echoed = ciri_stream
+        .try_next()
+        .await?
+        .ok_or(CommonError::NoMessage)?;
 
     assert_eq!(&echoed, &msg);
 

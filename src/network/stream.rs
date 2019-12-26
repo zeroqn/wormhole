@@ -138,7 +138,7 @@ impl network::Stream for QuicStream {
             self.conn.remote_peer(),
             proto
         );
-        self.proto= Some(proto);
+        self.proto = Some(proto);
     }
 
     fn direction(&self) -> Direction {

@@ -1,18 +1,24 @@
-use super::{DefaultSwitch, Host, Switch, FramedStream, switch::{Offer, Use}, ProtocolHandler, MatchProtocol};
+use super::{
+    switch::{Offer, Use},
+    DefaultSwitch, FramedStream, Host, MatchProtocol, ProtocolHandler, Switch,
+};
 use crate::{
-    crypto::{PeerId, PublicKey, PrivateKey},
+    crypto::{PeerId, PrivateKey, PublicKey},
     multiaddr::Multiaddr,
-    network::{QuicConn, QuicNetwork, QuicStream, RemoteConnHandler, RemoteStreamHandler, Protocol, ProtocolId, NetworkEvent, Network},
+    network::{
+        Network, NetworkEvent, Protocol, ProtocolId, QuicConn, QuicNetwork, QuicStream,
+        RemoteConnHandler, RemoteStreamHandler,
+    },
     peer_store::PeerStore,
 };
 
-use bytes::BytesMut;
-use prost::Message;
-use anyhow::{Error, Context as AnyHowContext};
+use anyhow::{Context as AnyHowContext, Error};
 use async_trait::async_trait;
+use bytes::BytesMut;
 use creep::Context;
-use futures::{channel::mpsc, TryStreamExt, SinkExt};
-use tracing::{trace_span, debug};
+use futures::{channel::mpsc, SinkExt, TryStreamExt};
+use prost::Message;
+use tracing::{debug, trace_span};
 
 use std::sync::Arc;
 
@@ -36,9 +42,7 @@ pub struct DefaultStreamHandler {
 
 impl DefaultStreamHandler {
     pub fn new(switch: Arc<DefaultSwitch>) -> Self {
-        DefaultStreamHandler {
-            switch,
-        }
+        DefaultStreamHandler { switch }
     }
 }
 
@@ -47,7 +51,9 @@ impl RemoteStreamHandler for DefaultStreamHandler {
     type Stream = QuicStream;
 
     async fn handle(&self, stream: Self::Stream) {
-        self.switch.handle(FramedStream::new(Box::new(stream))).await
+        self.switch
+            .handle(FramedStream::new(Box::new(stream)))
+            .await
     }
 }
 
@@ -89,7 +95,11 @@ impl DefaultHost {
     }
 
     // TODO: multiple protocols support
-    async fn try_protocol(_ctx: Context, framed_stream: &mut FramedStream, protocol: Protocol) -> Result<(), Error> {
+    async fn try_protocol(
+        _ctx: Context,
+        framed_stream: &mut FramedStream,
+        protocol: Protocol,
+    ) -> Result<(), Error> {
         use HostError::*;
 
         let span = trace_span!("try protocol");
@@ -130,7 +140,11 @@ impl Host for DefaultHost {
     }
 
     // Match protocol name
-    async fn add_match_handler(&self, r#match: impl for<'a> MatchProtocol<'a> + 'static, handler: impl ProtocolHandler + 'static) -> Result<(), Error> {
+    async fn add_match_handler(
+        &self,
+        r#match: impl for<'a> MatchProtocol<'a> + 'static,
+        handler: impl ProtocolHandler + 'static,
+    ) -> Result<(), Error> {
         Ok(self.switch.add_match_handler(r#match, handler).await?)
     }
 
@@ -138,16 +152,31 @@ impl Host for DefaultHost {
         self.switch.remove_handler(proto_id).await
     }
 
-    async fn connect(&self, ctx: Context, peer_id: &PeerId, raddr: Option<&Multiaddr>) -> Result<(), Error> {
+    async fn connect(
+        &self,
+        ctx: Context,
+        peer_id: &PeerId,
+        raddr: Option<&Multiaddr>,
+    ) -> Result<(), Error> {
         if let Some(raddr) = raddr {
-            self.peer_store.set_multiaddr(peer_id, raddr.to_owned()).await;
+            self.peer_store
+                .set_multiaddr(peer_id, raddr.to_owned())
+                .await;
         }
 
         Ok(self.network.connect(ctx, peer_id).await?)
     }
 
-    async fn new_stream(&self, ctx: Context, peer_id: &PeerId, protocol: Protocol) -> Result<FramedStream, Error> {
-        let raw_stream = self.network.new_stream(ctx.clone(), peer_id, protocol).await?;
+    async fn new_stream(
+        &self,
+        ctx: Context,
+        peer_id: &PeerId,
+        protocol: Protocol,
+    ) -> Result<FramedStream, Error> {
+        let raw_stream = self
+            .network
+            .new_stream(ctx.clone(), peer_id, protocol)
+            .await?;
         let mut framed_stream = FramedStream::new(Box::new(raw_stream));
 
         if let Err(err) = Self::try_protocol(ctx, &mut framed_stream, protocol).await {

@@ -1,9 +1,7 @@
 use super::RawStream;
 
-use futures::{
-    Sink, Stream
-};
-use futures_codec::{Framed, LengthCodec, Encoder};
+use futures::{Sink, Stream};
+use futures_codec::{Encoder, Framed, LengthCodec};
 
 use std::{
     pin::Pin,
@@ -43,7 +41,10 @@ impl Sink<<LengthCodec as Encoder>::Item> for FramedStream {
         Sink::poll_ready(Pin::new(&mut self.get_mut().inner), cx)
     }
 
-    fn start_send(self: Pin<&mut Self>, item: <LengthCodec as Encoder>::Item) -> Result<(), Self::Error> {
+    fn start_send(
+        self: Pin<&mut Self>,
+        item: <LengthCodec as Encoder>::Item,
+    ) -> Result<(), Self::Error> {
         Sink::start_send(Pin::new(&mut self.get_mut().inner), item)
     }
 

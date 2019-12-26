@@ -1,14 +1,14 @@
 pub mod message;
-pub use message::{Offer, Use, UseProtocol, OfferProtocol};
+pub use message::{Offer, OfferProtocol, Use, UseProtocol};
 
-use super::{ProtocolHandler, Switch, MatchProtocol, FramedStream};
+use super::{FramedStream, MatchProtocol, ProtocolHandler, Switch};
 use crate::network::{Protocol, ProtocolId};
 
-use tracing::{debug, trace_span};
-use bytes::BytesMut;
+use anyhow::{Context, Error};
 use async_trait::async_trait;
-use anyhow::{Error, Context};
+use bytes::BytesMut;
 use futures::{lock::Mutex, stream::TryStreamExt, SinkExt};
+use tracing::{debug, trace_span};
 
 use std::{
     borrow::Borrow,
@@ -92,12 +92,18 @@ impl Switch for DefaultSwitch {
             handler: Box::new(handler),
         };
 
-        { self.register.lock().await.insert(reg_proto) };
+        {
+            self.register.lock().await.insert(reg_proto)
+        };
 
         Ok(())
     }
 
-    async fn add_match_handler(&self, r#match: impl for<'a> MatchProtocol<'a> + Send + 'static, handler: impl ProtocolHandler + 'static) -> Result<(), Error> {
+    async fn add_match_handler(
+        &self,
+        r#match: impl for<'a> MatchProtocol<'a> + Send + 'static,
+        handler: impl ProtocolHandler + 'static,
+    ) -> Result<(), Error> {
         let proto = Protocol::new(*handler.proto_id(), handler.proto_name());
         debug!("add protocol {} handler", proto);
 
@@ -107,7 +113,9 @@ impl Switch for DefaultSwitch {
             handler: Box::new(handler),
         };
 
-        { self.register.lock().await.insert(reg_proto) };
+        {
+            self.register.lock().await.insert(reg_proto)
+        };
 
         Ok(())
     }
@@ -118,7 +126,10 @@ impl Switch for DefaultSwitch {
         self.register.lock().await.remove(&proto_id);
     }
 
-    async fn negotiate(&self, stream: &mut FramedStream) -> Result<Box<dyn ProtocolHandler>, Error> {
+    async fn negotiate(
+        &self,
+        stream: &mut FramedStream,
+    ) -> Result<Box<dyn ProtocolHandler>, Error> {
         use prost::Message;
         use SwitchError::*;
 
@@ -139,7 +150,10 @@ impl Switch for DefaultSwitch {
         let register = { self.register.lock().await.clone() };
         let proto_handler = match_protocol(register, protocols_in_offer).ok_or(NoProtocolMatch)?;
 
-        let r#use = Use::new(*proto_handler.proto_id(), proto_handler.proto_name().to_owned());
+        let r#use = Use::new(
+            *proto_handler.proto_id(),
+            proto_handler.proto_name().to_owned(),
+        );
         let mut use_data = BytesMut::new();
         r#use.encode(&mut use_data)?;
 
@@ -149,7 +163,10 @@ impl Switch for DefaultSwitch {
     }
 }
 
-fn match_protocol(register: HashSet<RegisteredProtocol>, protocols_in_offer: Vec<OfferProtocol>) -> Option<Box<dyn ProtocolHandler>> {
+fn match_protocol(
+    register: HashSet<RegisteredProtocol>,
+    protocols_in_offer: Vec<OfferProtocol>,
+) -> Option<Box<dyn ProtocolHandler>> {
     for protocol in protocols_in_offer.into_iter() {
         match protocol {
             OfferProtocol::Id(id) => {

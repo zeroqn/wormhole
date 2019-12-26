@@ -1,6 +1,6 @@
 use super::{
-    Conn, Connectedness, Dialer, Direction, Network, Protocol, QuicConn, QuicConnPool,
-    QuicDialer, QuicStream, RemoteConnHandler, RemoteStreamHandler,
+    Conn, Connectedness, Dialer, Direction, Network, Protocol, QuicConn, QuicConnPool, QuicDialer,
+    QuicStream, RemoteConnHandler, RemoteStreamHandler,
 };
 use crate::{
     crypto::{PeerId, PrivateKey},
