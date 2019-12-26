@@ -1,8 +1,8 @@
-use super::{DefaultSwitch, Host, Switch, FramedStream, switch::{Offer, Use}};
+use super::{DefaultSwitch, Host, Switch, FramedStream, switch::{Offer, Use}, ProtocolHandler, MatchProtocol};
 use crate::{
     crypto::{PeerId, PublicKey, PrivateKey},
     multiaddr::Multiaddr,
-    network::{QuicConn, QuicNetwork, QuicStream, RemoteConnHandler, RemoteStreamHandler, Protocol, NetworkEvent, Network},
+    network::{QuicConn, QuicNetwork, QuicStream, RemoteConnHandler, RemoteStreamHandler, Protocol, ProtocolId, NetworkEvent, Network},
     peer_store::PeerStore,
 };
 
@@ -12,6 +12,8 @@ use anyhow::{Error, Context as AnyHowContext};
 use async_trait::async_trait;
 use creep::Context;
 use futures::{channel::mpsc, TryStreamExt, SinkExt};
+
+use std::sync::Arc;
 
 #[derive(thiserror::Error, Debug)]
 pub enum HostError {
@@ -28,11 +30,11 @@ impl RemoteConnHandler for () {
 
 #[derive(Clone)]
 pub struct DefaultStreamHandler {
-    switch: DefaultSwitch,
+    switch: Arc<DefaultSwitch>,
 }
 
 impl DefaultStreamHandler {
-    pub fn new(switch: DefaultSwitch) -> Self {
+    pub fn new(switch: Arc<DefaultSwitch>) -> Self {
         DefaultStreamHandler {
             switch,
         }
@@ -52,6 +54,7 @@ pub type DefaultNetwork = QuicNetwork<(), DefaultStreamHandler>;
 
 pub struct DefaultHost {
     network: DefaultNetwork,
+    switch: Arc<DefaultSwitch>,
     peer_store: PeerStore,
 
     _pubkey: PublicKey,
@@ -59,14 +62,18 @@ pub struct DefaultHost {
 }
 
 impl DefaultHost {
-    pub fn make(host_privkey: &PrivateKey, peer_store: PeerStore, switch: DefaultSwitch) -> Result<Self, Error> {
-        let stream_handler = DefaultStreamHandler::new(switch);
+    pub fn make(host_privkey: &PrivateKey, peer_store: PeerStore) -> Result<Self, Error> {
+        let switch = Arc::new(DefaultSwitch::default());
+        let stream_handler = DefaultStreamHandler::new(Arc::clone(&switch));
+
         let network = QuicNetwork::make(host_privkey, peer_store.clone(), (), stream_handler)?;
+
         let pubkey = host_privkey.pubkey();
         let peer_id = pubkey.peer_id();
 
         let host = DefaultHost {
             network,
+            switch,
             peer_store,
 
             _pubkey: pubkey,
@@ -74,6 +81,10 @@ impl DefaultHost {
         };
 
         Ok(host)
+    }
+
+    pub async fn listen(&mut self, multiaddr: Multiaddr) -> Result<(), Error> {
+        Ok(self.network.listen(multiaddr).await?)
     }
 
     // TODO: multiple protocols support
@@ -105,6 +116,19 @@ impl Host for DefaultHost {
 
     fn peer_store(&self) -> Self::PeerStore {
         self.peer_store.clone()
+    }
+
+    async fn add_handler(&self, handler: impl ProtocolHandler + 'static) -> Result<(), Error> {
+        Ok(self.switch.add_handler(handler).await?)
+    }
+
+    // Match protocol name
+    async fn add_match_handler(&self, r#match: impl for<'a> MatchProtocol<'a> + 'static, handler: impl ProtocolHandler + 'static) -> Result<(), Error> {
+        Ok(self.switch.add_match_handler(r#match, handler).await?)
+    }
+
+    async fn remove_handler(&self, proto_id: ProtocolId) {
+        self.switch.remove_handler(proto_id).await
     }
 
     async fn connect(&self, ctx: Context, peer_id: &PeerId, raddr: Option<&Multiaddr>) -> Result<(), Error> {

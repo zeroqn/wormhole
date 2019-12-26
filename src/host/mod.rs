@@ -3,6 +3,7 @@ pub mod r#impl;
 pub mod framed_stream;
 pub use switch::DefaultSwitch;
 pub use framed_stream::FramedStream;
+pub use r#impl::{DefaultHost, DefaultStreamHandler};
 
 use crate::{network::{self, Protocol, ProtocolId, NetworkEvent, Connectedness}, crypto::{PeerId, PublicKey}, multiaddr::Multiaddr};
 
@@ -97,6 +98,13 @@ pub trait Host {
     fn peer_id(&self) -> &PeerId;
 
     fn peer_store(&self) -> Self::PeerStore;
+
+    async fn add_handler(&self, handler: impl ProtocolHandler + 'static) -> Result<(), Error>;
+
+    // Match protocol name
+    async fn add_match_handler(&self, r#match: impl for<'a> MatchProtocol<'a> + 'static, handler: impl ProtocolHandler + 'static) -> Result<(), Error>;
+
+    async fn remove_handler(&self, proto_id: ProtocolId);
 
     async fn connect(&self, ctx: Context, peer_id: &PeerId, raddr: Option<&Multiaddr>) -> Result<(), Error>;
 
