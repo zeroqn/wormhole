@@ -12,6 +12,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
 use dyn_clone::DynClone;
+use tracing::{error, debug};
 
 use std::{collections::HashSet};
 
@@ -64,11 +65,14 @@ pub trait Switch: Sync + Send + DynClone {
     async fn handle(&self, mut stream: FramedStream) {
         let proto_handler = match self.negotiate(&mut stream).await {
             Ok(handler) => handler,
-            Err(_) => {
+            Err(err) => {
                 // Reset stream
+                error!("negotiate: {}", err);
                 return stream.reset().await;
             }
         };
+
+        debug!("accept protocol {}", proto_handler.proto_name());
 
         proto_handler.handle(&mut stream).await
     }

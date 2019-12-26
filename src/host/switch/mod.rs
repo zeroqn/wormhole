@@ -4,9 +4,11 @@ pub use message::{Offer, Use, UseProtocol, OfferProtocol};
 use super::{ProtocolHandler, Switch, MatchProtocol, FramedStream};
 use crate::network::{Protocol, ProtocolId};
 
+use tracing::{debug, trace_span};
+use bytes::BytesMut;
 use async_trait::async_trait;
 use anyhow::{Error, Context};
-use futures::{lock::Mutex, stream::TryStreamExt};
+use futures::{lock::Mutex, stream::TryStreamExt, SinkExt};
 
 use std::{
     borrow::Borrow,
@@ -81,8 +83,11 @@ impl Default for DefaultSwitch {
 #[async_trait]
 impl Switch for DefaultSwitch {
     async fn add_handler(&self, handler: impl ProtocolHandler + 'static) -> Result<(), Error> {
+        let proto = Protocol::new(*handler.proto_id(), handler.proto_name());
+        debug!("add protocol {} handler", proto);
+
         let reg_proto = RegisteredProtocol {
-            inner: Protocol::new(*handler.proto_id(), handler.proto_name()),
+            inner: proto,
             r#match: None,
             handler: Box::new(handler),
         };
@@ -93,8 +98,11 @@ impl Switch for DefaultSwitch {
     }
 
     async fn add_match_handler(&self, r#match: impl for<'a> MatchProtocol<'a> + Send + 'static, handler: impl ProtocolHandler + 'static) -> Result<(), Error> {
+        let proto = Protocol::new(*handler.proto_id(), handler.proto_name());
+        debug!("add protocol {} handler", proto);
+
         let reg_proto = RegisteredProtocol {
-            inner: Protocol::new(*handler.proto_id(), handler.proto_name()),
+            inner: proto,
             r#match: Some(Box::new(r#match)),
             handler: Box::new(handler),
         };
@@ -105,6 +113,8 @@ impl Switch for DefaultSwitch {
     }
 
     async fn remove_handler(&self, proto_id: ProtocolId) {
+        debug!("remove protocol {} handler", proto_id);
+
         self.register.lock().await.remove(&proto_id);
     }
 
@@ -112,41 +122,58 @@ impl Switch for DefaultSwitch {
         use prost::Message;
         use SwitchError::*;
 
+        let span = trace_span!("negotiate incoming stream");
+        let _guard = span.enter();
+
         let first_msg = stream.try_next().await?.ok_or(NoProtocolOffer)?;
+        debug!("first msg");
+
         let offer = Offer::decode(first_msg).context("first got message must be offer")?;
         let protocols_in_offer = offer.into_protocols();
+        debug!("protocols in offer: {:?}", protocols_in_offer);
 
         if protocols_in_offer.is_empty() {
             return Err(EmptyOffer.into());
         }
 
         let register = { self.register.lock().await.clone() };
+        let proto_handler = match_protocol(register, protocols_in_offer).ok_or(NoProtocolMatch)?;
 
-        for protocol in protocols_in_offer.into_iter() {
-            match protocol {
-                OfferProtocol::Id(id) => {
-                    let id: ProtocolId = id.into();
+        let r#use = Use::new(*proto_handler.proto_id(), proto_handler.proto_name().to_owned());
+        let mut use_data = BytesMut::new();
+        r#use.encode(&mut use_data)?;
 
-                    if let Some(reg_proto) = register.get(&id) {
-                        return Ok(dyn_clone::clone_box(&*reg_proto.handler));
-                    }
+        stream.send(use_data.freeze()).await?;
+
+        Ok(proto_handler)
+    }
+}
+
+fn match_protocol(register: HashSet<RegisteredProtocol>, protocols_in_offer: Vec<OfferProtocol>) -> Option<Box<dyn ProtocolHandler>> {
+    for protocol in protocols_in_offer.into_iter() {
+        match protocol {
+            OfferProtocol::Id(id) => {
+                let id: ProtocolId = id.into();
+
+                if let Some(reg_proto) = register.get(&id) {
+                    return Some(dyn_clone::clone_box(&*reg_proto.handler));
                 }
-                OfferProtocol::Name(name) => {
-                    for reg_proto in register.iter() {
-                        if reg_proto.inner.name == name {
-                            return Ok(dyn_clone::clone_box(&*reg_proto.handler));
-                        }
+            }
+            OfferProtocol::Name(name) => {
+                for reg_proto in register.iter() {
+                    if reg_proto.inner.name == name {
+                        return Some(dyn_clone::clone_box(&*reg_proto.handler));
+                    }
 
-                        if let Some(proto_match) = reg_proto.r#match.as_ref() {
-                            if proto_match.r#match(&name) {
-                                return Ok(dyn_clone::clone_box(&*reg_proto.handler));
-                            }
+                    if let Some(proto_match) = reg_proto.r#match.as_ref() {
+                        if proto_match.r#match(&name) {
+                            return Some(dyn_clone::clone_box(&*reg_proto.handler));
                         }
                     }
                 }
             }
         }
-
-        Err(NoProtocolMatch.into())
     }
+
+    None
 }

@@ -12,6 +12,7 @@ use anyhow::{Error, Context as AnyHowContext};
 use async_trait::async_trait;
 use creep::Context;
 use futures::{channel::mpsc, TryStreamExt, SinkExt};
+use tracing::{trace_span, debug};
 
 use std::sync::Arc;
 
@@ -88,17 +89,23 @@ impl DefaultHost {
     }
 
     // TODO: multiple protocols support
-    async fn negotiate(_ctx: Context, framed_stream: &mut FramedStream, protocol: Protocol) -> Result<(), Error> {
+    async fn try_protocol(_ctx: Context, framed_stream: &mut FramedStream, protocol: Protocol) -> Result<(), Error> {
         use HostError::*;
 
+        let span = trace_span!("try protocol");
+        let _guard = span.enter();
+
+        debug!("offer {}", protocol);
         let offer = Offer::with_names(vec![protocol.name.to_owned()]);
         let mut offer_data = BytesMut::new();
         offer.encode(&mut offer_data)?;
 
         framed_stream.send(offer_data.freeze()).await?;
+        debug!("offer sent");
 
         let maybe_use = framed_stream.try_next().await?.ok_or(NoProtocolUse)?;
-        Use::decode(maybe_use).context("decode protocol Use message")?;
+        let r#use = Use::decode(maybe_use).context("decode protocol Use message")?;
+        debug!("got use {:?}", r#use);
 
         Ok(())
     }
@@ -143,7 +150,7 @@ impl Host for DefaultHost {
         let raw_stream = self.network.new_stream(ctx.clone(), peer_id, protocol).await?;
         let mut framed_stream = FramedStream::new(Box::new(raw_stream));
 
-        if let Err(err) = Self::negotiate(ctx, &mut framed_stream, protocol).await {
+        if let Err(err) = Self::try_protocol(ctx, &mut framed_stream, protocol).await {
             framed_stream.reset().await;
             return Err(err);
         }
