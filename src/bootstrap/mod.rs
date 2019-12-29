@@ -3,7 +3,7 @@ use crate::{
     host::{FramedStream, ProtocolHandler},
     multiaddr::Multiaddr,
     peer_store::{self, PeerStore},
-    network::{ProtocolId, Connectedness},
+    network::{ProtocolId, Connectedness, Protocol},
 };
 
 use creep::Context;
@@ -90,6 +90,10 @@ impl BootstrapProtocol {
 
             event_tx,
         }
+    }
+
+    pub fn protocol() -> Protocol {
+        Protocol::new(1, "bootstrap")
     }
 
     // TODO: pass timeout through ctx
