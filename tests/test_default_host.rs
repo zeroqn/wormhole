@@ -44,8 +44,8 @@ impl ProtocolHandler for EchoProtocol {
         "echo"
     }
 
-    async fn handle(&self, stream: &mut FramedStream) {
-        if let Err(err) = Self::echo(stream).await {
+    async fn handle(&self, mut stream: FramedStream) {
+        if let Err(err) = Self::echo(&mut stream).await {
             error!("echo {}", err);
         }
     }
