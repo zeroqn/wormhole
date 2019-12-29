@@ -2,11 +2,11 @@ mod common;
 use common::{random_keypair, CommonError};
 
 use anyhow::Error;
-use async_trait::async_trait;
 use bytes::Bytes;
+use async_trait::async_trait;
 use creep::Context;
-use futures::{SinkExt, TryStreamExt, channel::mpsc::{channel, Receiver}};
-use tracing::error;
+use futures::{SinkExt, TryStreamExt, StreamExt, channel::mpsc::{channel, Receiver}, lock::BiLock};
+use tracing::{error, debug};
 
 use wormhole::{
     bootstrap::{BootstrapProtocol, Event as BtEvent},
@@ -56,7 +56,7 @@ async fn make_xenovox<A: ToSocketAddrs>(
     addr: A,
     peer_store: PeerStore,
     is_server: bool,
-) -> Result<(DefaultHost, PublicKey, Receiver<BtEvent>), Error> {
+) -> Result<(DefaultHost, PublicKey, Multiaddr, Receiver<BtEvent>), Error> {
     let (sk, pk) = random_keypair();
 
     let mut sock_addr = addr.to_socket_addrs()?;
@@ -66,16 +66,18 @@ async fn make_xenovox<A: ToSocketAddrs>(
     let peer_info = PeerInfo::with_all(pk.clone(), Connectedness::CanConnect, maddr.clone());
     peer_store.register(peer_info).await;
 
+    debug!("peer id {}", pk.peer_id());
+
     let (ev_tx, ev_rx) = channel(5);
     // TieDing
     let bt_x_proto = BootstrapProtocol::new(peer_store.clone(), pk.peer_id(), maddr.clone(), is_server, ev_tx);
-
+    
     let mut host = DefaultHost::make(&sk, peer_store.clone())?;
     host.add_handler(bt_x_proto).await?;
     host.add_handler(EchoProtocol).await?;
-    host.listen(maddr).await?;
+    host.listen(maddr.clone()).await?;
 
-    Ok((host, pk, ev_rx))
+    Ok((host, pk, maddr, ev_rx))
 }
 
 #[tokio::test]
@@ -89,21 +91,42 @@ async fn test_bootstrap_protocol() -> Result<(), Error> {
     let peer_store = PeerStore::default();
     let msg = "watch 20-12-2019";
 
-    let (_geralt_xenovox, geralt_pubkey, _) =
+    let (_geralt_xenovox, geralt_pubkey, geralt_maddr, ..) =
         make_xenovox(("127.0.0.1", 2077), peer_store.clone(), true).await?;
-    let (ciri_xenovox, ciri_pubkey, _) = make_xenovox(("127.0.0.1", 2020), peer_store.clone(), false).await?;
-    
-    let yene_store = PeerStore::default();
-    let (yennefer_xenovox, ..) = make_xenovox(("127.0.0.1", 2021), yene_store.clone(), false).await?;
+    let (ciri_xenovox, ciri_pubkey, ciri_maddr, ..) = make_xenovox(("127.0.0.1", 2020), peer_store.clone(), false).await?;
 
-    let _ciri_stream = ciri_xenovox
+    let (ev_tx, _ev_rx) = channel(10);
+    let ciri_stream = ciri_xenovox
         .new_stream(
             Context::new(),
             &geralt_pubkey.peer_id(),
             BootstrapProtocol::protocol(),
         )
         .await?;
-    let _yene_stream = yennefer_xenovox.new_stream(Context::new(), &geralt_pubkey.peer_id(), BootstrapProtocol::protocol()).await?;
+    let (w_stream, r_stream) = BiLock::new(ciri_stream);
+    BootstrapProtocol::publish_ourself(Context::new(), ciri_pubkey.peer_id(), ciri_maddr.clone(), w_stream).await?;
+    BootstrapProtocol::new_arrived(Context::new(), peer_store.clone(), r_stream, ev_tx).await?;
+
+    let yene_store = PeerStore::default();
+    let geralt_info = PeerInfo::with_addr(geralt_pubkey.peer_id(), geralt_maddr);
+    yene_store.register(geralt_info).await;
+
+    let (yennefer_xenovox, yene_pubkey, yene_maddr, ..) = make_xenovox(("127.0.0.1", 2021), yene_store.clone(), false).await?;
+
+    let yene_stream = yennefer_xenovox.new_stream(Context::new(), &geralt_pubkey.peer_id(), BootstrapProtocol::protocol()).await?;
+
+    let (ev_tx, mut ev_rx) = channel(10);
+    let (w_stream, r_stream) = BiLock::new(yene_stream);
+    BootstrapProtocol::publish_ourself(Context::new(), yene_pubkey.peer_id(), yene_maddr.clone(), w_stream).await?;
+    BootstrapProtocol::new_arrived(Context::new(), yene_store.clone(), r_stream, ev_tx).await?;
+
+    let event = ev_rx.next().await.ok_or(CommonError::NoMessage)?;
+    debug!("event {}", event);
+
+    let mut yene_stream = yennefer_xenovox.new_stream(Context::new(), &ciri_pubkey.peer_id(), EchoProtocol::proto()).await?;
+
+    yene_stream.send(Bytes::from(msg)).await?;
+    let echoed = yene_stream.try_next().await?.ok_or(CommonError::NoMessage)?;
 
     assert_eq!(&echoed, &msg);
 

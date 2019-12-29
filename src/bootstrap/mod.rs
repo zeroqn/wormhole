@@ -10,7 +10,7 @@ use creep::Context;
 use anyhow::{Error, Context as ErrorContext};
 use derive_more::Display;
 use tokio::time::delay_for;
-use tracing::error;
+use tracing::{error, debug};
 use async_trait::async_trait;
 use bytes::BytesMut;
 use futures::{SinkExt, TryStreamExt, lock::BiLock, channel::mpsc::Sender};
@@ -98,6 +98,8 @@ impl BootstrapProtocol {
 
     // TODO: pass timeout through ctx
     pub async fn publish_ourself(_ctx: Context, peer_id: PeerId, local_multiaddr: Multiaddr, w_stream: WriteStream) -> Result<(), Error> {
+        debug!("publish ourself {}", local_multiaddr);
+
         let our_info = PeerInfo::new((peer_id, local_multiaddr));
 
         let encoded_ourself = {
@@ -148,7 +150,11 @@ impl BootstrapProtocol {
         let decoded_peers: Peers = prost::Message::decode(encoded_peers).context("decode new arrived peers")?;
         let store_peer_infos = decoded_peers.data.into_iter().map(|b_pi| b_pi.into_store_info()).collect::<Result<Vec<_>, Error>>()?;
 
+        debug!("new arrived");
+
         for mut peer_info in store_peer_infos.into_iter() {
+            debug!("new arrived {}", peer_info.peer_id());
+
             if !peer_store.contains(peer_info.peer_id()).await {
                 peer_info.set_connectedness(Connectedness::CanConnect);
 
@@ -200,7 +206,7 @@ impl ProtocolHandler for BootstrapProtocol {
         }
 
         if let Err(err) = Self::new_arrived(Context::new(), self.peer_store.clone(), r_stream, self.event_tx.clone()).await {
-            error!("new arrived: {}", err);
+            error!("{} new arrived: {}", self.peer_id, err);
         }
     }
 }
