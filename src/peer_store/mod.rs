@@ -69,6 +69,19 @@ impl PeerInfo {
             multiaddrs: HashSet::new(),
         }
     }
+
+    pub fn peer_id(&self) -> &PeerId {
+        &self.peer_id
+    }
+
+    pub fn into_multiaddr(self) -> Option<Multiaddr> {
+        self.multiaddrs.into_iter().next()
+    }
+
+    pub fn set_connectedness(&mut self, connectedness: Connectedness) {
+        self.connectedness = connectedness;
+    }
+
 }
 
 impl Borrow<PeerId> for PeerInfo {
@@ -113,7 +126,7 @@ impl PeerStore {
         self.book.lock().await.insert(peer_info);
     }
     
-    pub async fn take(&self, size: usize) -> Vec<(PeerId, Multiaddr)> {
+    pub async fn choose(&self, size: usize) -> Vec<(PeerId, Multiaddr)> {
         let book = self.book.lock().await;
 
         book.iter().filter(|pi| !pi.multiaddrs.is_empty()).take(size).map(|pi| (pi.peer_id.clone(), pi.multiaddrs.iter().next().expect("impossible").clone())).collect()

@@ -52,7 +52,7 @@ pub trait ProtocolHandler: Send + Sync + DynClone {
 
     fn proto_name(&self) -> &'static str;
 
-    async fn handle(&self, stream: &mut FramedStream);
+    async fn handle(&self, stream: FramedStream);
 }
 
 #[async_trait]
@@ -83,7 +83,7 @@ pub trait Switch: Sync + Send + DynClone {
 
         debug!("accept protocol {}", proto_handler.proto_name());
 
-        proto_handler.handle(&mut stream).await
+        proto_handler.handle(stream).await
     }
 }
 
