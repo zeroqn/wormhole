@@ -83,7 +83,7 @@ impl Listener for QuicListener {
             is_closed_by_driver.store(true, Ordering::SeqCst);
         });
 
-        Ok(QuicConn::new(
+        let quic_conn = QuicConn::new(
             connection,
             bi_streams,
             is_closed,
@@ -91,8 +91,9 @@ impl Listener for QuicListener {
             self.pubkey.clone(),
             remote_pubkey,
             remote_multiaddr,
-        )
-        .into())
+        );
+
+        Ok(Box::new(quic_conn) as Box<dyn CapableConn>)
     }
 
     fn close(&mut self) -> Result<(), Error> {

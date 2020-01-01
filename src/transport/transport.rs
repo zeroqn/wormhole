@@ -123,7 +123,7 @@ impl Transport for QuicTransport {
             is_closed_by_driver.store(true, Ordering::SeqCst);
         });
 
-        Ok(QuicConn::new(
+        let boxed_conn: Box<dyn CapableConn> = Box::new(QuicConn::new(
             connection,
             bi_streams,
             is_closed,
@@ -131,8 +131,9 @@ impl Transport for QuicTransport {
             self.local_pubkey.clone(),
             peer_pubkey,
             raddr,
-        )
-        .into())
+        ));
+
+        Ok(boxed_conn)
     }
 
     fn can_dial(&self, raddr: &Multiaddr) -> bool {
@@ -162,7 +163,13 @@ impl Transport for QuicTransport {
 
         debug!("listen on {}", laddr);
 
-        Ok(QuicListener::new(incoming, self.local_pubkey.clone(), self.clone()).into())
+        let boxed_listener: Box<dyn Listener> = Box::new(QuicListener::new(
+            incoming,
+            self.local_pubkey.clone(),
+            self.clone(),
+        ));
+
+        Ok(boxed_listener)
     }
 
     fn local_multiaddr(&self) -> Option<Multiaddr> {

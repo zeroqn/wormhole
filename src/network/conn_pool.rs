@@ -1,4 +1,4 @@
-use super::QuicConn;
+use super::Conn;
 use crate::crypto::PeerId;
 
 use futures::lock::Mutex;
@@ -12,7 +12,7 @@ use std::{
 
 struct PeerConn {
     peer_id: PeerId,
-    conn: QuicConn,
+    conn: Box<dyn Conn>,
 }
 
 impl Borrow<PeerId> for PeerConn {
@@ -36,15 +36,15 @@ impl Hash for PeerConn {
 }
 
 #[derive(Clone)]
-pub(crate) struct QuicConnPool(Arc<Mutex<HashSet<PeerConn>>>);
+pub(crate) struct NetworkConnPool(Arc<Mutex<HashSet<PeerConn>>>);
 
-impl Default for QuicConnPool {
+impl Default for NetworkConnPool {
     fn default() -> Self {
-        QuicConnPool(Default::default())
+        NetworkConnPool(Default::default())
     }
 }
 
-impl QuicConnPool {
+impl NetworkConnPool {
     pub async fn peers(&self) -> Vec<PeerId> {
         self.0
             .lock()
@@ -54,7 +54,7 @@ impl QuicConnPool {
             .collect()
     }
 
-    pub async fn conns(&self) -> Vec<QuicConn> {
+    pub async fn conns(&self) -> Vec<Box<dyn Conn>> {
         self.0
             .lock()
             .await
@@ -63,19 +63,21 @@ impl QuicConnPool {
             .collect()
     }
 
-    pub async fn conn_to_peer(&self, peer_id: &PeerId) -> Option<QuicConn> {
+    pub async fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Box<dyn Conn>> {
         self.0.lock().await.get(peer_id).map(|pc| pc.conn.clone())
     }
 
-    pub async fn insert(&self, peer_id: PeerId, conn: QuicConn) {
+    pub async fn insert(&self, peer_id: PeerId, conn: impl Conn + 'static) {
+        let conn: Box<dyn Conn> = Box::new(conn);
+
         self.0.lock().await.insert(PeerConn { peer_id, conn });
     }
 
-    pub async fn take(&self, peer_id: &PeerId) -> Option<QuicConn> {
+    pub async fn take(&self, peer_id: &PeerId) -> Option<Box<dyn Conn>> {
         self.0.lock().await.take(peer_id).map(|pc| pc.conn)
     }
 
-    pub async fn drain(&self) -> Vec<(PeerId, QuicConn)> {
+    pub async fn drain(&self) -> Vec<(PeerId, Box<dyn Conn>)> {
         self.0
             .lock()
             .await

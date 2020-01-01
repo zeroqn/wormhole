@@ -155,6 +155,6 @@ impl CapableConn for QuicConn {
     }
 
     fn transport(&self) -> Box<dyn Transport> {
-        self.transport.clone().into()
+        Box::new(self.transport.clone()) as Box<dyn Transport>
     }
 }

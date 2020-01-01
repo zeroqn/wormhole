@@ -1,9 +1,5 @@
-use super::{Conn, Connectedness, Dialer, Direction, QuicConn, QuicConnPool};
-use crate::{
-    crypto::PeerId,
-    peer_store::PeerStore,
-    transport::{QuicTransport, Transport},
-};
+use super::{Conn, Connectedness, Dialer, Direction, NetworkConn, NetworkConnPool};
+use crate::{crypto::PeerId, peer_store::PeerStore, transport::Transport};
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -17,19 +13,21 @@ pub enum DialerError {
 }
 
 #[derive(Clone)]
-pub struct QuicDialer {
+pub struct NetworkDialer {
     peer_store: PeerStore,
-    conn_pool: QuicConnPool,
-    transport: QuicTransport,
+    conn_pool: NetworkConnPool,
+    transport: Box<dyn Transport>,
 }
 
-impl QuicDialer {
+impl NetworkDialer {
     pub(crate) fn new(
         peer_store: PeerStore,
-        conn_pool: QuicConnPool,
-        transport: QuicTransport,
+        conn_pool: NetworkConnPool,
+        transport: impl Transport + 'static,
     ) -> Self {
-        QuicDialer {
+        let transport: Box<dyn Transport> = Box::new(transport);
+
+        NetworkDialer {
             peer_store,
             conn_pool,
             transport,
@@ -55,7 +53,7 @@ impl QuicDialer {
     }
 
     async fn close_peer_conn(
-        peer_conn: (PeerId, QuicConn),
+        peer_conn: (PeerId, Box<dyn Conn>),
         peer_store: PeerStore,
     ) -> Result<(), Error> {
         let (peer_id, conn) = peer_conn;
@@ -73,11 +71,8 @@ impl QuicDialer {
 }
 
 #[async_trait]
-impl Dialer for QuicDialer {
-    type Conn = QuicConn;
-    type PeerStore = PeerStore;
-
-    async fn dial_peer(&self, ctx: Context, peer_id: &PeerId) -> Result<Self::Conn, Error> {
+impl Dialer for NetworkDialer {
+    async fn dial_peer(&self, ctx: Context, peer_id: &PeerId) -> Result<Box<dyn Conn>, Error> {
         if let Some(addrs) = self.peer_store.get_multiaddrs(peer_id).await {
             // TODO: simply use first address right now
             if let Some(addr) = addrs.into_iter().next() {
@@ -91,7 +86,9 @@ impl Dialer for QuicDialer {
 
                 debug!("connected to peer {}", peer_id);
 
-                return Ok(QuicConn::new(conn, Direction::Outbound));
+                let boxed_conn: Box<dyn Conn> =
+                    Box::new(NetworkConn::new(conn, Direction::Outbound));
+                return Ok(boxed_conn);
             }
         }
 
@@ -110,7 +107,7 @@ impl Dialer for QuicDialer {
         Ok(())
     }
 
-    fn peer_store(&self) -> Self::PeerStore {
+    fn peer_store(&self) -> PeerStore {
         self.peer_store.clone()
     }
 
@@ -122,11 +119,11 @@ impl Dialer for QuicDialer {
         self.conn_pool.peers().await
     }
 
-    async fn conns(&self) -> Vec<Self::Conn> {
+    async fn conns(&self) -> Vec<Box<dyn Conn>> {
         self.conn_pool.conns().await
     }
 
-    async fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Self::Conn> {
+    async fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Box<dyn Conn>> {
         self.conn_pool.conn_to_peer(peer_id).await
     }
 }
