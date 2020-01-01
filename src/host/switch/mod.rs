@@ -31,7 +31,7 @@ pub enum SwitchError {
 
 struct RegisteredProtocol {
     inner: Protocol,
-    r#match: Option<Box<dyn for<'a> MatchProtocol<'a>>>,
+    r#match: Option<Box<dyn MatchProtocol>>,
     handler: Box<dyn ProtocolHandler>,
 }
 
@@ -82,14 +82,14 @@ impl Default for DefaultSwitch {
 
 #[async_trait]
 impl Switch for DefaultSwitch {
-    async fn add_handler(&self, handler: impl ProtocolHandler + 'static) -> Result<(), Error> {
+    async fn add_handler(&self, handler: Box<dyn ProtocolHandler>) -> Result<(), Error> {
         let proto = Protocol::new(*handler.proto_id(), handler.proto_name());
         debug!("add protocol {} handler", proto);
 
         let reg_proto = RegisteredProtocol {
             inner: proto,
             r#match: None,
-            handler: Box::new(handler),
+            handler,
         };
 
         {
@@ -101,16 +101,16 @@ impl Switch for DefaultSwitch {
 
     async fn add_match_handler(
         &self,
-        r#match: impl for<'a> MatchProtocol<'a> + Send + 'static,
-        handler: impl ProtocolHandler + 'static,
+        r#match: Box<dyn MatchProtocol>,
+        handler: Box<dyn ProtocolHandler>,
     ) -> Result<(), Error> {
         let proto = Protocol::new(*handler.proto_id(), handler.proto_name());
         debug!("add protocol {} handler", proto);
 
         let reg_proto = RegisteredProtocol {
             inner: proto,
-            r#match: Some(Box::new(r#match)),
-            handler: Box::new(handler),
+            r#match: Some(r#match),
+            handler,
         };
 
         {

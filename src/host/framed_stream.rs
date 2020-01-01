@@ -1,4 +1,4 @@
-use super::RawStream;
+use crate::network;
 
 use futures::{Sink, Stream};
 use futures_codec::{Encoder, Framed, LengthCodec};
@@ -9,11 +9,11 @@ use std::{
 };
 
 pub struct FramedStream {
-    inner: Framed<Box<dyn RawStream>, LengthCodec>,
+    inner: Framed<Box<dyn network::Stream>, LengthCodec>,
 }
 
 impl FramedStream {
-    pub fn new(stream: Box<dyn RawStream>) -> Self {
+    pub fn new(stream: Box<dyn network::Stream>) -> Self {
         FramedStream {
             inner: Framed::new(stream, LengthCodec),
         }
@@ -27,7 +27,7 @@ impl FramedStream {
 }
 
 impl Stream for FramedStream {
-    type Item = <Framed<Box<dyn RawStream>, LengthCodec> as Stream>::Item;
+    type Item = <Framed<Box<dyn network::Stream>, LengthCodec> as Stream>::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         Stream::poll_next(Pin::new(&mut self.get_mut().inner), cx)

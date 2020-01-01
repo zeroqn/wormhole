@@ -1,13 +1,13 @@
 use super::{
     switch::{Offer, Use},
-    DefaultSwitch, FramedStream, Host, MatchProtocol, ProtocolHandler, Switch,
+    DefaultSwitch, FramedStream, Host, MatchProtocol, ProtocolHandler, Switch
 };
 use crate::{
     crypto::{PeerId, PrivateKey, PublicKey},
     multiaddr::Multiaddr,
     network::{
-        Network, NetworkEvent, Protocol, ProtocolId, QuicConn, QuicNetwork, QuicStream,
-        RemoteConnHandler, RemoteStreamHandler,
+        Network, NetworkEvent, Protocol, ProtocolId, QuicNetwork,
+        RemoteConnHandler, RemoteStreamHandler, Conn, Stream
     },
     peer_store::PeerStore,
 };
@@ -30,9 +30,7 @@ pub enum HostError {
 
 #[async_trait]
 impl RemoteConnHandler for () {
-    type Conn = QuicConn;
-
-    async fn handle(&self, _conn: Self::Conn) {}
+    async fn handle(&self, _conn: Box<dyn Conn>) {}
 }
 
 #[derive(Clone)]
@@ -48,11 +46,9 @@ impl DefaultStreamHandler {
 
 #[async_trait]
 impl RemoteStreamHandler for DefaultStreamHandler {
-    type Stream = QuicStream;
-
-    async fn handle(&self, stream: Self::Stream) {
+    async fn handle(&self, stream: Box<dyn Stream>) {
         self.switch
-            .handle(FramedStream::new(Box::new(stream)))
+            .handle(FramedStream::new(stream))
             .await
     }
 }
@@ -123,27 +119,23 @@ impl DefaultHost {
 
 #[async_trait]
 impl Host for DefaultHost {
-    type Switch = DefaultSwitch;
-    type Network = DefaultNetwork;
-    type PeerStore = PeerStore;
-
     fn peer_id(&self) -> &PeerId {
         &self.peer_id
     }
 
-    fn peer_store(&self) -> Self::PeerStore {
+    fn peer_store(&self) -> PeerStore {
         self.peer_store.clone()
     }
 
-    async fn add_handler(&self, handler: impl ProtocolHandler + 'static) -> Result<(), Error> {
+    async fn add_handler(&self, handler: Box<dyn ProtocolHandler>) -> Result<(), Error> {
         Ok(self.switch.add_handler(handler).await?)
     }
 
     // Match protocol name
     async fn add_match_handler(
         &self,
-        r#match: impl for<'a> MatchProtocol<'a> + 'static,
-        handler: impl ProtocolHandler + 'static,
+        r#match: Box<dyn MatchProtocol>,
+        handler: Box<dyn ProtocolHandler>,
     ) -> Result<(), Error> {
         Ok(self.switch.add_match_handler(r#match, handler).await?)
     }
@@ -177,7 +169,7 @@ impl Host for DefaultHost {
             .network
             .new_stream(ctx.clone(), peer_id, protocol)
             .await?;
-        let mut framed_stream = FramedStream::new(Box::new(raw_stream));
+        let mut framed_stream = FramedStream::new(raw_stream);
 
         if let Err(err) = Self::try_protocol(ctx, &mut framed_stream, protocol).await {
             framed_stream.reset().await;
@@ -191,7 +183,7 @@ impl Host for DefaultHost {
         Ok(self.network.close().await?)
     }
 
-    async fn subscribe(&self) -> mpsc::Receiver<NetworkEvent<Self::Network>> {
+    async fn subscribe(&self) -> mpsc::Receiver<NetworkEvent> {
         todo!()
     }
 }

@@ -8,43 +8,23 @@ pub use switch::DefaultSwitch;
 use crate::{
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
-    network::{self, Connectedness, NetworkEvent, Protocol, ProtocolId},
+    network::{Connectedness, NetworkEvent, Protocol, ProtocolId},
 };
 
 use anyhow::Error;
 use async_trait::async_trait;
 use creep::Context;
 use dyn_clone::DynClone;
-use futures::{
-    channel::mpsc,
-    io::{AsyncRead, AsyncWrite},
-};
+use futures::channel::mpsc;
 use tracing::{debug, error};
 
 use std::collections::HashSet;
 
-#[async_trait]
-pub trait ResetStream {
-    async fn reset(&mut self);
+pub trait MatchProtocol: Send + DynClone {
+    fn r#match<'a>(&self, name: &'a str) -> bool;
 }
 
-#[async_trait]
-impl<T> ResetStream for T
-where
-    T: network::Stream + Send + Unpin,
-{
-    async fn reset(&mut self) {
-        self.reset().await
-    }
-}
-
-impl<T> RawStream for T where T: network::Stream + Send + Unpin {}
-
-pub trait RawStream: AsyncRead + AsyncWrite + ResetStream + Send + Unpin {}
-
-pub trait MatchProtocol<'a>: Send + DynClone {
-    fn r#match(&self, name: &'a str) -> bool;
-}
+dyn_clone::clone_trait_object!(MatchProtocol);
 
 #[async_trait]
 pub trait ProtocolHandler: Send + Sync + DynClone {
@@ -55,15 +35,17 @@ pub trait ProtocolHandler: Send + Sync + DynClone {
     async fn handle(&self, stream: FramedStream);
 }
 
+dyn_clone::clone_trait_object!(ProtocolHandler);
+
 #[async_trait]
 pub trait Switch: Sync + Send + DynClone {
-    async fn add_handler(&self, handler: impl ProtocolHandler + 'static) -> Result<(), Error>;
+    async fn add_handler(&self, handler: Box<dyn ProtocolHandler>) -> Result<(), Error>;
 
     // Match protocol name
     async fn add_match_handler(
         &self,
-        r#match: impl for<'a> MatchProtocol<'a> + 'static,
-        handler: impl ProtocolHandler + 'static,
+        r#match: Box<dyn MatchProtocol>,
+        handler: Box<dyn ProtocolHandler>,
     ) -> Result<(), Error>;
 
     async fn remove_handler(&self, proto_id: ProtocolId);
@@ -87,6 +69,8 @@ pub trait Switch: Sync + Send + DynClone {
     }
 }
 
+dyn_clone::clone_trait_object!(Switch);
+
 #[async_trait]
 pub trait PeerStore: Sync + Send {
     async fn get_pubkey(&self, peer_id: &PeerId) -> Option<PublicKey>;
@@ -104,21 +88,17 @@ pub trait PeerStore: Sync + Send {
 
 #[async_trait]
 pub trait Host {
-    type Switch;
-    type Network: network::Network;
-    type PeerStore;
-
     fn peer_id(&self) -> &PeerId;
 
-    fn peer_store(&self) -> Self::PeerStore;
+    fn peer_store(&self) -> crate::peer_store::PeerStore;
 
-    async fn add_handler(&self, handler: impl ProtocolHandler + 'static) -> Result<(), Error>;
+    async fn add_handler(&self, handler: Box<dyn ProtocolHandler>) -> Result<(), Error>;
 
     // Match protocol name
     async fn add_match_handler(
         &self,
-        r#match: impl for<'a> MatchProtocol<'a> + 'static,
-        handler: impl ProtocolHandler + 'static,
+        r#match: Box<dyn MatchProtocol>,
+        handler: Box<dyn ProtocolHandler>,
     ) -> Result<(), Error>;
 
     async fn remove_handler(&self, proto_id: ProtocolId);
@@ -139,5 +119,5 @@ pub trait Host {
 
     async fn close(&self) -> Result<(), Error>;
 
-    async fn subscribe(&self) -> mpsc::Receiver<NetworkEvent<Self::Network>>;
+    async fn subscribe(&self) -> mpsc::Receiver<NetworkEvent>;
 }
