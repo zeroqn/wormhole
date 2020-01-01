@@ -16,6 +16,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use bytes::Bytes;
 use creep::Context;
+use dyn_clone::DynClone;
 use futures::prelude::{AsyncRead, AsyncWrite, Stream};
 use parity_multiaddr::Multiaddr;
 
@@ -24,7 +25,7 @@ use std::net::SocketAddr;
 pub const RESET_ERR_CODE: u32 = 0;
 
 #[async_trait]
-pub trait MuxedStream: AsyncRead + AsyncWrite + Stream<Item = Bytes> {
+pub trait MuxedStream: AsyncRead + AsyncWrite + Stream<Item = Bytes> + Unpin + Send {
     async fn close(&mut self) -> Result<(), Error>;
 
     fn reset(&mut self);
@@ -45,26 +46,27 @@ pub trait ConnMultiaddr {
 }
 
 #[async_trait]
-pub trait CapableConn: ConnSecurity + ConnMultiaddr + Sync + Send + Clone {
-    type MuxedStream: MuxedStream;
-    type Transport: Sync + Send + Clone + Transport;
+pub trait CapableConn: ConnSecurity + ConnMultiaddr + Sync + Send + DynClone {
+    async fn open_stream(&self) -> Result<Box<dyn MuxedStream>, Error>;
 
-    async fn open_stream(&self) -> Result<Self::MuxedStream, Error>;
-
-    async fn accept_stream(&self) -> Result<Self::MuxedStream, Error>;
+    async fn accept_stream(&self) -> Result<Box<dyn MuxedStream>, Error>;
 
     fn is_closed(&self) -> bool;
 
     async fn close(&self) -> Result<(), Error>;
 
-    fn transport(&self) -> Self::Transport;
+    fn transport(&self) -> Box<dyn Transport>;
+}
+
+impl<C: CapableConn + 'static> From<C> for Box<dyn CapableConn> {
+    fn from(conn: C) -> Self {
+        Box::new(conn) as Box<dyn CapableConn>
+    }
 }
 
 #[async_trait]
 pub trait Listener: Send {
-    type CapableConn;
-
-    async fn accept(&mut self) -> Result<Self::CapableConn, Error>;
+    async fn accept(&mut self) -> Result<Box<dyn CapableConn>, Error>;
 
     fn close(&mut self) -> Result<(), Error>;
 
@@ -73,21 +75,30 @@ pub trait Listener: Send {
     fn multiaddr(&self) -> Multiaddr;
 }
 
-#[async_trait]
-pub trait Transport: Sync + Send + Clone {
-    type CapableConn;
-    type Listener;
+impl<L: Listener + 'static> From<L> for Box<dyn Listener> {
+    fn from(listener: L) -> Self {
+        Box::new(listener) as Box<dyn Listener>
+    }
+}
 
+#[async_trait]
+pub trait Transport: Sync + Send + DynClone {
     async fn dial(
         &self,
         ctx: Context,
         raddr: Multiaddr,
         peer_id: PeerId,
-    ) -> Result<Self::CapableConn, Error>;
+    ) -> Result<Box<dyn CapableConn>, Error>;
 
     fn can_dial(&self, raddr: &Multiaddr) -> bool;
 
-    async fn listen(&mut self, laddr: Multiaddr) -> Result<Self::Listener, Error>;
+    async fn listen(&mut self, laddr: Multiaddr) -> Result<Box<dyn Listener>, Error>;
 
     fn local_multiaddr(&self) -> Option<Multiaddr>;
+}
+
+impl<T: Transport + 'static> From<T> for Box<dyn Transport> {
+    fn from(transport: T) -> Self {
+        Box::new(transport) as Box<dyn Transport>
+    }
 }

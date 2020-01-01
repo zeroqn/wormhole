@@ -9,14 +9,14 @@ use futures::stream::StreamExt;
 use wormhole::{
     crypto::PublicKey,
     multiaddr::{Multiaddr, MultiaddrExt},
-    transport::{CapableConn, Listener, QuicListener, QuicTransport, Transport},
+    transport::{Listener, QuicTransport, Transport},
 };
 
 use std::net::ToSocketAddrs;
 
 pub async fn make_xenovox<A: ToSocketAddrs>(
     addr: A,
-) -> Result<(QuicTransport, QuicListener, Multiaddr, PublicKey), Error> {
+) -> Result<(QuicTransport, Box<dyn Listener>, Multiaddr, PublicKey), Error> {
     let (sk, pk) = random_keypair();
 
     let mut xenovox = QuicTransport::make(&sk)?;
