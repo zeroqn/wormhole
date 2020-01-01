@@ -73,8 +73,8 @@ async fn make_xenovox<A: ToSocketAddrs>(
     let bt_x_proto = BootstrapProtocol::new(peer_store.clone(), pk.peer_id(), maddr.clone(), is_server, ev_tx);
     
     let mut host = DefaultHost::make(&sk, peer_store.clone())?;
-    host.add_handler(bt_x_proto).await?;
-    host.add_handler(EchoProtocol).await?;
+    host.add_handler(Box::new(bt_x_proto)).await?;
+    host.add_handler(Box::new(EchoProtocol)).await?;
     host.listen(maddr.clone()).await?;
 
     Ok((host, pk, maddr, ev_rx))
