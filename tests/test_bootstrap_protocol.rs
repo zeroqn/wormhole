@@ -15,7 +15,7 @@ use tracing::{debug, error};
 use wormhole::{
     bootstrap::{BootstrapProtocol, Event as BtEvent},
     crypto::PublicKey,
-    host::{DefaultHost, FramedStream, Host, ProtocolHandler},
+    host::{QuicHost, FramedStream, Host, ProtocolHandler},
     multiaddr::{Multiaddr, MultiaddrExt},
     network::{Connectedness, Protocol, ProtocolId},
     peer_store::{PeerInfo, PeerStore},
@@ -60,7 +60,7 @@ async fn make_xenovox<A: ToSocketAddrs>(
     addr: A,
     peer_store: PeerStore,
     is_server: bool,
-) -> Result<(DefaultHost, PublicKey, Multiaddr, Receiver<BtEvent>), Error> {
+) -> Result<(QuicHost, PublicKey, Multiaddr, Receiver<BtEvent>), Error> {
     let (sk, pk) = random_keypair();
 
     let mut sock_addr = addr.to_socket_addrs()?;
@@ -82,7 +82,7 @@ async fn make_xenovox<A: ToSocketAddrs>(
         ev_tx,
     );
 
-    let mut host = DefaultHost::make(&sk, peer_store.clone())?;
+    let mut host = QuicHost::make(&sk, peer_store.clone())?;
     host.add_handler(Box::new(bt_x_proto)).await?;
     host.add_handler(Box::new(EchoProtocol)).await?;
     host.listen(maddr.clone()).await?;

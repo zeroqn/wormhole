@@ -1,11 +1,11 @@
 pub mod conn;
 pub mod conn_pool;
 pub mod dialer;
-pub mod r#impl;
+pub mod quic_impl;
 pub mod stream;
 pub mod traits;
 
-pub use r#impl::QuicNetwork;
+pub use quic_impl::QuicNetwork;
 pub use traits::{Conn, Dialer, Network, RemoteConnHandler, RemoteStreamHandler, Stream};
 
 use conn::NetworkConn;

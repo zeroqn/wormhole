@@ -1,4 +1,4 @@
-use super::{MuxedStream, RESET_ERR_CODE};
+use super::{super::traits::MuxedStream, RESET_ERR_CODE};
 
 use async_trait::async_trait;
 use bytes::Bytes;

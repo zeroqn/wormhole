@@ -10,7 +10,7 @@ use tracing::error;
 
 use wormhole::{
     crypto::PublicKey,
-    host::{DefaultHost, FramedStream, Host, ProtocolHandler},
+    host::{QuicHost, FramedStream, Host, ProtocolHandler},
     multiaddr::{Multiaddr, MultiaddrExt},
     network::{Connectedness, Protocol, ProtocolId},
     peer_store::{PeerInfo, PeerStore},
@@ -54,7 +54,7 @@ impl ProtocolHandler for EchoProtocol {
 async fn make_xenovox<A: ToSocketAddrs>(
     addr: A,
     peer_store: PeerStore,
-) -> Result<(DefaultHost, PublicKey), Error> {
+) -> Result<(QuicHost, PublicKey), Error> {
     let (sk, pk) = random_keypair();
 
     let mut sock_addr = addr.to_socket_addrs()?;
@@ -64,7 +64,7 @@ async fn make_xenovox<A: ToSocketAddrs>(
     let peer_info = PeerInfo::with_all(pk.clone(), Connectedness::CanConnect, maddr.clone());
     peer_store.register(peer_info).await;
 
-    let mut host = DefaultHost::make(&sk, peer_store.clone())?;
+    let mut host = QuicHost::make(&sk, peer_store.clone())?;
     host.add_handler(Box::new(EchoProtocol)).await?;
     host.listen(maddr).await?;
 

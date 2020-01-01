@@ -1,4 +1,4 @@
-use super::{CapableConn, ConnMultiaddr, ConnSecurity, MuxedStream, Transport};
+use super::super::traits::{CapableConn, ConnMultiaddr, ConnSecurity, MuxedStream, Transport};
 use super::{QuicMuxedStream, QuicTransport, RESET_ERR_CODE};
 use crate::{
     crypto::{PeerId, PublicKey},
