@@ -4,11 +4,13 @@ pub mod listener;
 pub mod muxed_stream;
 pub mod transport;
 
-pub use capable_conn::{QuicConn, QuinnConnectionExt};
+pub use capable_conn::QuinnConnectionExt;
 pub use config::QuicConfig;
-pub use listener::QuicListener;
-pub use muxed_stream::QuicMuxedStream;
 pub use transport::QuicTransport;
+
+use capable_conn::QuicConn;
+use listener::QuicListener;
+use muxed_stream::QuicMuxedStream;
 
 use crate::crypto::{PeerId, PublicKey};
 
