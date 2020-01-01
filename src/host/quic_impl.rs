@@ -53,7 +53,7 @@ impl RemoteStreamHandler for DefaultStreamHandler {
 
 pub type DefaultNetwork = QuicNetwork<(), DefaultStreamHandler>;
 
-pub struct DefaultHost {
+pub struct QuicHost {
     network: DefaultNetwork,
     switch: Arc<DefaultSwitch>,
     peer_store: PeerStore,
@@ -62,7 +62,7 @@ pub struct DefaultHost {
     peer_id: PeerId,
 }
 
-impl DefaultHost {
+impl QuicHost {
     pub fn make(host_privkey: &PrivateKey, peer_store: PeerStore) -> Result<Self, Error> {
         let switch = Arc::new(DefaultSwitch::default());
         let stream_handler = DefaultStreamHandler::new(Arc::clone(&switch));
@@ -72,7 +72,7 @@ impl DefaultHost {
         let pubkey = host_privkey.pubkey();
         let peer_id = pubkey.peer_id();
 
-        let host = DefaultHost {
+        let host = QuicHost {
             network,
             switch,
             peer_store,
@@ -116,7 +116,7 @@ impl DefaultHost {
 }
 
 #[async_trait]
-impl Host for DefaultHost {
+impl Host for QuicHost {
     fn peer_id(&self) -> &PeerId {
         &self.peer_id
     }
