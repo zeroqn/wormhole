@@ -10,7 +10,7 @@ use tracing::error;
 
 use wormhole::{
     crypto::PublicKey,
-    host::{QuicHost, FramedStream, Host, ProtocolHandler},
+    host::{FramedStream, Host, ProtocolHandler, QuicHost},
     multiaddr::{Multiaddr, MultiaddrExt},
     network::{Connectedness, Protocol, ProtocolId},
     peer_store::{PeerInfo, PeerStore},

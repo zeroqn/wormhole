@@ -1,5 +1,5 @@
 use super::super::traits::{CapableConn, Listener, Transport};
-use super::{QuicTransport, QuicConn, QuinnConnectionExt};
+use super::{QuicConn, QuicTransport, QuinnConnectionExt};
 use crate::{
     crypto::PublicKey,
     multiaddr::{Multiaddr, MultiaddrExt},

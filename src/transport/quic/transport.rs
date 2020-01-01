@@ -1,4 +1,4 @@
-use super::super::traits::{Listener, Transport, CapableConn};
+use super::super::traits::{CapableConn, Listener, Transport};
 use super::{QuicConfig, QuicConn, QuicListener, QuinnConnectionExt};
 use crate::{
     crypto::{PeerId, PrivateKey, PublicKey},

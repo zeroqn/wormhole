@@ -15,7 +15,7 @@ use tracing::{debug, error};
 use wormhole::{
     bootstrap::{BootstrapProtocol, Event as BtEvent},
     crypto::PublicKey,
-    host::{QuicHost, FramedStream, Host, ProtocolHandler},
+    host::{FramedStream, Host, ProtocolHandler, QuicHost},
     multiaddr::{Multiaddr, MultiaddrExt},
     network::{Connectedness, Protocol, ProtocolId},
     peer_store::{PeerInfo, PeerStore},
