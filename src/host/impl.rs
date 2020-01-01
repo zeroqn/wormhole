@@ -1,13 +1,13 @@
 use super::{
     switch::{Offer, Use},
-    DefaultSwitch, FramedStream, Host, MatchProtocol, ProtocolHandler, Switch
+    DefaultSwitch, FramedStream, Host, MatchProtocol, ProtocolHandler, Switch,
 };
 use crate::{
     crypto::{PeerId, PrivateKey, PublicKey},
     multiaddr::Multiaddr,
     network::{
-        Network, NetworkEvent, Protocol, ProtocolId, QuicNetwork,
-        RemoteConnHandler, RemoteStreamHandler, Conn, Stream
+        Conn, Network, NetworkEvent, Protocol, ProtocolId, QuicNetwork, RemoteConnHandler,
+        RemoteStreamHandler, Stream,
     },
     peer_store::PeerStore,
 };
@@ -47,9 +47,7 @@ impl DefaultStreamHandler {
 #[async_trait]
 impl RemoteStreamHandler for DefaultStreamHandler {
     async fn handle(&self, stream: Box<dyn Stream>) {
-        self.switch
-            .handle(FramedStream::new(stream))
-            .await
+        self.switch.handle(FramedStream::new(stream)).await
     }
 }
 
