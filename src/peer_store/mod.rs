@@ -81,7 +81,6 @@ impl PeerInfo {
     pub fn set_connectedness(&mut self, connectedness: Connectedness) {
         self.connectedness = connectedness;
     }
-
 }
 
 impl Borrow<PeerId> for PeerInfo {
@@ -125,11 +124,20 @@ impl PeerStore {
     pub async fn register(&self, peer_info: PeerInfo) {
         self.book.lock().await.insert(peer_info);
     }
-    
+
     pub async fn choose(&self, size: usize) -> Vec<(PeerId, Multiaddr)> {
         let book = self.book.lock().await;
 
-        book.iter().filter(|pi| !pi.multiaddrs.is_empty()).take(size).map(|pi| (pi.peer_id.clone(), pi.multiaddrs.iter().next().expect("impossible").clone())).collect()
+        book.iter()
+            .filter(|pi| !pi.multiaddrs.is_empty())
+            .take(size)
+            .map(|pi| {
+                (
+                    pi.peer_id.clone(),
+                    pi.multiaddrs.iter().next().expect("impossible").clone(),
+                )
+            })
+            .collect()
     }
 
     pub async fn get_pubkey(&self, peer_id: &PeerId) -> Option<PublicKey> {

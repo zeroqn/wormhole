@@ -1,4 +1,4 @@
-use super::{CapableConn, ConnMultiaddr, ConnSecurity, Transport};
+use super::{CapableConn, ConnMultiaddr, ConnSecurity, MuxedStream, Transport};
 use super::{QuicMuxedStream, QuicTransport, RESET_ERR_CODE};
 use crate::{
     crypto::{PeerId, PublicKey},
@@ -112,18 +112,15 @@ impl ConnMultiaddr for QuicConn {
 
 #[async_trait]
 impl CapableConn for QuicConn {
-    type MuxedStream = QuicMuxedStream;
-    type Transport = QuicTransport;
-
-    async fn open_stream(&self) -> Result<Self::MuxedStream, Error> {
+    async fn open_stream(&self) -> Result<Box<dyn MuxedStream>, Error> {
         let (send, read) = self.conn.open_bi().await?;
 
         debug!("open stream on peer connection {}", self.remote_peer_id);
 
-        Ok(QuicMuxedStream::new(read, send))
+        Ok(Box::new(QuicMuxedStream::new(read, send)))
     }
 
-    async fn accept_stream(&self) -> Result<Self::MuxedStream, Error> {
+    async fn accept_stream(&self) -> Result<Box<dyn MuxedStream>, Error> {
         let opt_stream = {
             let bi_streams = &mut self.bi_streams.lock().await;
             bi_streams.next().await
@@ -137,7 +134,7 @@ impl CapableConn for QuicConn {
 
         debug!("got bi-stream from {}", self.remote_peer_id);
 
-        Ok(QuicMuxedStream::new(read, send))
+        Ok(Box::new(QuicMuxedStream::new(read, send)))
     }
 
     fn is_closed(&self) -> bool {
@@ -157,7 +154,7 @@ impl CapableConn for QuicConn {
         Ok(())
     }
 
-    fn transport(&self) -> Self::Transport {
-        self.transport.clone()
+    fn transport(&self) -> Box<dyn Transport> {
+        Box::new(self.transport.clone()) as Box<dyn Transport>
     }
 }

@@ -1,13 +1,13 @@
 use super::{
-    Conn, Connectedness, Dialer, Direction, Network, Protocol, QuicConn, QuicConnPool, QuicDialer,
-    QuicStream, RemoteConnHandler, RemoteStreamHandler,
+    Connectedness, Dialer, Direction, Network, NetworkConn, NetworkConnPool, NetworkDialer,
+    Protocol, RemoteConnHandler, RemoteStreamHandler, Stream,
 };
 use crate::{
     crypto::{PeerId, PrivateKey},
     multiaddr::Multiaddr,
     peer_store::{PeerInfo, PeerStore},
     transport::{ConnMultiaddr, ConnSecurity},
-    transport::{Listener, QuicListener, QuicTransport, Transport},
+    transport::{Listener, QuicTransport, Transport},
 };
 
 use anyhow::Error;
@@ -30,9 +30,9 @@ pub enum NetworkError {
 }
 
 struct QuicListenerDriver<ConnHandler, StreamHandler> {
-    listener: QuicListener,
+    listener: Box<dyn Listener>,
     peer_store: PeerStore,
-    conn_pool: QuicConnPool,
+    conn_pool: NetworkConnPool,
 
     conn_handler: ConnHandler,
     stream_handler: StreamHandler,
@@ -43,10 +43,13 @@ struct QuicListenerDriver<ConnHandler, StreamHandler> {
 
 impl<CH, SH> QuicListenerDriver<CH, SH>
 where
-    CH: RemoteConnHandler<Conn = QuicConn> + 'static + Unpin,
-    SH: RemoteStreamHandler<Stream = QuicStream> + 'static + Unpin,
+    CH: RemoteConnHandler + 'static + Unpin + Clone,
+    SH: RemoteStreamHandler + 'static + Unpin + Clone,
 {
-    fn new(network: QuicNetwork<CH, SH>, listener: QuicListener) -> (Self, QuicListenerDriverRef) {
+    fn new(
+        network: QuicNetwork<CH, SH>,
+        listener: impl Listener + 'static,
+    ) -> (Self, QuicListenerDriverRef) {
         let closing = Arc::new(AtomicBool::new(false));
         let (close_tx, close_rx) = oneshot::channel();
 
@@ -56,6 +59,7 @@ where
             local_multiaddr: listener.multiaddr(),
         };
 
+        let listener: Box<dyn Listener> = Box::new(listener);
         let driver = QuicListenerDriver {
             listener,
             peer_store: network.peer_store.clone(),
@@ -86,11 +90,11 @@ where
                 }
             }
 
-            let conn = QuicConn::new(self.listener.accept().await?, Direction::Inbound);
+            let conn = NetworkConn::new(self.listener.accept().await?, Direction::Inbound);
             let peer_store = self.peer_store.clone();
             let conn_pool = self.conn_pool.clone();
-            let conn_handler = self.conn_handler.clone();
-            let stream_handler = self.stream_handler.clone();
+            let conn_handler = dyn_clone::clone(&self.conn_handler);
+            let stream_handler = dyn_clone::clone(&self.stream_handler);
 
             tokio::spawn(Self::drive_conn(
                 conn,
@@ -103,9 +107,9 @@ where
     }
 
     async fn drive_conn(
-        conn: QuicConn,
+        conn: NetworkConn,
         peer_store: PeerStore,
-        conn_pool: QuicConnPool,
+        conn_pool: NetworkConnPool,
         conn_handler: CH,
         stream_handler: SH,
     ) {
@@ -127,7 +131,7 @@ where
 
         conn_pool.insert(peer_id.clone(), conn.clone()).await;
 
-        conn_handler.handle(conn.clone()).await;
+        conn_handler.handle(dyn_clone::clone_box(&conn)).await;
 
         loop {
             let stream = match conn.accept().await {
@@ -139,9 +143,9 @@ where
                 Ok(stream) => stream,
             };
 
-            let stream_handler = stream_handler.clone();
+            let stream_handler = dyn_clone::clone_box(&stream_handler);
             tokio::spawn(async move {
-                stream_handler.handle(stream).await;
+                stream_handler.handle(dyn_clone::clone_box(&stream)).await;
             });
         }
 
@@ -174,9 +178,9 @@ impl QuicListenerDriverRef {
 
 #[derive(Clone)]
 pub struct QuicNetwork<ConnHandler, StreamHandler> {
-    dialer: QuicDialer,
+    dialer: NetworkDialer,
     peer_store: PeerStore,
-    conn_pool: QuicConnPool,
+    conn_pool: NetworkConnPool,
     transport: QuicTransport,
     listener_driver_ref: Arc<Mutex<Option<QuicListenerDriverRef>>>,
     conn_handler: ConnHandler,
@@ -185,8 +189,8 @@ pub struct QuicNetwork<ConnHandler, StreamHandler> {
 
 impl<CH, SH> QuicNetwork<CH, SH>
 where
-    CH: RemoteConnHandler<Conn = QuicConn> + 'static + Unpin,
-    SH: RemoteStreamHandler<Stream = QuicStream> + 'static + Unpin,
+    CH: RemoteConnHandler + 'static + Unpin,
+    SH: RemoteStreamHandler + 'static + Unpin,
 {
     pub fn make(
         host_privkey: &PrivateKey,
@@ -195,8 +199,8 @@ where
         stream_handler: SH,
     ) -> Result<Self, Error> {
         let transport = QuicTransport::make(host_privkey)?;
-        let conn_pool = QuicConnPool::default();
-        let dialer = QuicDialer::new(peer_store.clone(), conn_pool.clone(), transport.clone());
+        let conn_pool = NetworkConnPool::default();
+        let dialer = NetworkDialer::new(peer_store.clone(), conn_pool.clone(), transport.clone());
 
         Ok(QuicNetwork {
             dialer,
@@ -219,12 +223,9 @@ where
 #[async_trait]
 impl<CH, SH> Network for QuicNetwork<CH, SH>
 where
-    CH: RemoteConnHandler<Conn = QuicConn> + 'static + Unpin,
-    SH: RemoteStreamHandler<Stream = QuicStream> + 'static + Unpin,
+    CH: RemoteConnHandler + 'static + Unpin + Clone,
+    SH: RemoteStreamHandler + 'static + Unpin + Clone,
 {
-    type Stream = QuicStream;
-    type Conn = QuicConn;
-
     async fn close(&self) -> Result<(), Error> {
         self.dialer.close().await?;
 
@@ -242,7 +243,7 @@ where
         ctx: Context,
         peer_id: &PeerId,
         proto: Protocol,
-    ) -> Result<Self::Stream, Error> {
+    ) -> Result<Box<dyn Stream>, Error> {
         debug!("new stream to {} using protocol {}", peer_id, proto);
 
         let conn = match self.dialer.conn_to_peer(peer_id).await {
@@ -261,7 +262,8 @@ where
         }
 
         let new_listener = self.transport.listen(laddr.clone()).await?;
-        let (mut driver, driver_ref) = QuicListenerDriver::new(self.clone(), new_listener);
+        let (mut driver, driver_ref) =
+            QuicListenerDriver::new(dyn_clone::clone(&self), new_listener);
 
         tokio::spawn(async move {
             if let Err(err) = driver.accept().await {

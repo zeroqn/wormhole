@@ -1,4 +1,6 @@
-use super::{QuicConfig, QuicConn, QuicListener, QuinnConnectionExt, Transport};
+use super::{
+    CapableConn, Listener, QuicConfig, QuicConn, QuicListener, QuinnConnectionExt, Transport,
+};
 use crate::{
     crypto::{PeerId, PrivateKey, PublicKey},
     multiaddr::{Multiaddr, MultiaddrExt},
@@ -64,15 +66,12 @@ impl QuicTransport {
 
 #[async_trait]
 impl Transport for QuicTransport {
-    type CapableConn = QuicConn;
-    type Listener = QuicListener;
-
     async fn dial(
         &self,
         _ctx: Context,
         raddr: Multiaddr,
         peer_id: PeerId,
-    ) -> Result<Self::CapableConn, Error> {
+    ) -> Result<Box<dyn CapableConn>, Error> {
         use TransportError::*;
 
         {
@@ -124,7 +123,7 @@ impl Transport for QuicTransport {
             is_closed_by_driver.store(true, Ordering::SeqCst);
         });
 
-        Ok(QuicConn::new(
+        let boxed_conn: Box<dyn CapableConn> = Box::new(QuicConn::new(
             connection,
             bi_streams,
             is_closed,
@@ -132,14 +131,16 @@ impl Transport for QuicTransport {
             self.local_pubkey.clone(),
             peer_pubkey,
             raddr,
-        ))
+        ));
+
+        Ok(boxed_conn)
     }
 
     fn can_dial(&self, raddr: &Multiaddr) -> bool {
         raddr.contains_socket_addr() && raddr.is_quic()
     }
 
-    async fn listen(&mut self, laddr: Multiaddr) -> Result<Self::Listener, Error> {
+    async fn listen(&mut self, laddr: Multiaddr) -> Result<Box<dyn Listener>, Error> {
         let sock_addr = laddr.to_socket_addr();
 
         let mut builder = Endpoint::builder();
@@ -162,11 +163,13 @@ impl Transport for QuicTransport {
 
         debug!("listen on {}", laddr);
 
-        Ok(QuicListener::new(
+        let boxed_listener: Box<dyn Listener> = Box::new(QuicListener::new(
             incoming,
             self.local_pubkey.clone(),
             self.clone(),
-        ))
+        ));
+
+        Ok(boxed_listener)
     }
 
     fn local_multiaddr(&self) -> Option<Multiaddr> {

@@ -1,8 +1,5 @@
-use super::{Direction, Protocol, QuicConn};
-use crate::{
-    network,
-    transport::{self, ConnSecurity, MuxedStream},
-};
+use super::{Conn, Direction, NetworkConn, Protocol, Stream};
+use crate::transport::{ConnSecurity, MuxedStream};
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -23,20 +20,22 @@ use std::{
 };
 
 #[derive(Clone)]
-pub struct QuicStream {
-    inner: Arc<Mutex<transport::QuicMuxedStream>>,
+pub struct NetworkStream {
+    inner: Arc<Mutex<Box<dyn MuxedStream>>>,
     proto: Option<Protocol>,
     direction: Direction,
-    conn: QuicConn,
+    conn: NetworkConn,
 }
 
-impl QuicStream {
+impl NetworkStream {
     pub fn new(
-        muxed_stream: transport::QuicMuxedStream,
+        muxed_stream: impl MuxedStream + 'static,
         direction: Direction,
-        conn: QuicConn,
+        conn: NetworkConn,
     ) -> Self {
-        QuicStream {
+        let muxed_stream: Box<dyn MuxedStream> = Box::new(muxed_stream);
+
+        NetworkStream {
             inner: Arc::new(Mutex::new(muxed_stream)),
             proto: None,
             direction,
@@ -54,7 +53,7 @@ macro_rules! stream_poll_ready {
     }};
 }
 
-impl AsyncRead for QuicStream {
+impl AsyncRead for NetworkStream {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context,
@@ -72,7 +71,7 @@ impl AsyncRead for QuicStream {
     }
 }
 
-impl AsyncWrite for QuicStream {
+impl AsyncWrite for NetworkStream {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context,
@@ -116,7 +115,7 @@ impl AsyncWrite for QuicStream {
 }
 
 // TODO: should be decoded protocol message bytes
-impl futures::stream::Stream for QuicStream {
+impl futures::stream::Stream for NetworkStream {
     type Item = Bytes;
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Option<Self::Item>> {
@@ -125,9 +124,7 @@ impl futures::stream::Stream for QuicStream {
 }
 
 #[async_trait]
-impl network::Stream for QuicStream {
-    type Conn = QuicConn;
-
+impl Stream for NetworkStream {
     fn protocol(&self) -> Option<Protocol> {
         self.proto.clone()
     }
@@ -145,8 +142,8 @@ impl network::Stream for QuicStream {
         self.direction
     }
 
-    fn conn(&self) -> Self::Conn {
-        self.conn.clone()
+    fn conn(&self) -> Box<dyn Conn> {
+        dyn_clone::clone_box(&self.conn)
     }
 
     async fn close(&mut self) -> Result<(), Error> {

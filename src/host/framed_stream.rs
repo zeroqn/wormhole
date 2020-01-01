@@ -1,6 +1,7 @@
-use super::RawStream;
+use crate::network::{self, Conn, Direction, Protocol};
 
-use futures::{Sink, Stream};
+use anyhow::Error;
+use futures::Sink;
 use futures_codec::{Encoder, Framed, LengthCodec};
 
 use std::{
@@ -9,14 +10,34 @@ use std::{
 };
 
 pub struct FramedStream {
-    inner: Framed<Box<dyn RawStream>, LengthCodec>,
+    inner: Framed<Box<dyn network::Stream>, LengthCodec>,
+    twin: Box<dyn network::Stream>,
 }
 
 impl FramedStream {
-    pub fn new(stream: Box<dyn RawStream>) -> Self {
+    pub fn new(stream: Box<dyn network::Stream>) -> Self {
+        let twin = stream.clone();
+
         FramedStream {
             inner: Framed::new(stream, LengthCodec),
+            twin,
         }
+    }
+
+    pub fn protocol(&self) -> Option<Protocol> {
+        self.twin.protocol()
+    }
+
+    pub fn direction(&self) -> Direction {
+        self.twin.direction()
+    }
+
+    pub fn conn(&self) -> Box<dyn Conn> {
+        self.twin.conn()
+    }
+
+    pub async fn close(&mut self) -> Result<(), Error> {
+        self.twin.close().await
     }
 
     pub async fn reset(self) {
@@ -26,11 +47,11 @@ impl FramedStream {
     }
 }
 
-impl Stream for FramedStream {
-    type Item = <Framed<Box<dyn RawStream>, LengthCodec> as Stream>::Item;
+impl futures::Stream for FramedStream {
+    type Item = <Framed<Box<dyn network::Stream>, LengthCodec> as futures::Stream>::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        Stream::poll_next(Pin::new(&mut self.get_mut().inner), cx)
+        futures::Stream::poll_next(Pin::new(&mut self.get_mut().inner), cx)
     }
 }
 

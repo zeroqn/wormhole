@@ -1,4 +1,4 @@
-use super::{Listener, QuicConn, QuicTransport, QuinnConnectionExt, Transport};
+use super::{CapableConn, Listener, QuicConn, QuicTransport, QuinnConnectionExt, Transport};
 use crate::{
     crypto::PublicKey,
     multiaddr::{Multiaddr, MultiaddrExt},
@@ -42,9 +42,7 @@ impl QuicListener {
 
 #[async_trait]
 impl Listener for QuicListener {
-    type CapableConn = QuicConn;
-
-    async fn accept(&mut self) -> Result<Self::CapableConn, Error> {
+    async fn accept(&mut self) -> Result<Box<dyn CapableConn>, Error> {
         if self.incoming.is_none() {
             return Err(ListenerError::ClosedOrDriverLost)?;
         }
@@ -85,7 +83,7 @@ impl Listener for QuicListener {
             is_closed_by_driver.store(true, Ordering::SeqCst);
         });
 
-        Ok(QuicConn::new(
+        let quic_conn = QuicConn::new(
             connection,
             bi_streams,
             is_closed,
@@ -93,7 +91,9 @@ impl Listener for QuicListener {
             self.pubkey.clone(),
             remote_pubkey,
             remote_multiaddr,
-        ))
+        );
+
+        Ok(Box::new(quic_conn) as Box<dyn CapableConn>)
     }
 
     fn close(&mut self) -> Result<(), Error> {

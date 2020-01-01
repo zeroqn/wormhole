@@ -65,7 +65,7 @@ async fn make_xenovox<A: ToSocketAddrs>(
     peer_store.register(peer_info).await;
 
     let mut host = DefaultHost::make(&sk, peer_store.clone())?;
-    host.add_handler(EchoProtocol).await?;
+    host.add_handler(Box::new(EchoProtocol)).await?;
     host.listen(maddr).await?;
 
     Ok((host, pk))

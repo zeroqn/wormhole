@@ -1,8 +1,8 @@
-use super::{Direction, Protocol, QuicStream};
+use super::{Direction, NetworkStream, Protocol};
 use crate::{
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
-    network,
+    network::{Conn, Stream},
     transport::{self, CapableConn, ConnSecurity},
 };
 
@@ -14,24 +14,26 @@ use tracing::{debug, error};
 use std::sync::Arc;
 
 #[derive(Clone)]
-pub struct QuicConn {
-    inner: transport::QuicConn,
+pub struct NetworkConn {
+    inner: Box<dyn CapableConn>,
     direction: Direction,
-    streams: Arc<Mutex<Vec<QuicStream>>>,
+    streams: Arc<Mutex<Vec<NetworkStream>>>,
 }
 
-impl QuicConn {
-    pub fn new(conn: transport::QuicConn, direction: Direction) -> Self {
-        QuicConn {
-            inner: conn,
+impl NetworkConn {
+    pub fn new(conn: impl CapableConn + 'static, direction: Direction) -> Self {
+        let inner: Box<dyn CapableConn> = Box::new(conn);
+
+        NetworkConn {
+            inner,
             direction,
             streams: Default::default(),
         }
     }
 
-    pub(crate) async fn accept(&self) -> Result<QuicStream, Error> {
+    pub(crate) async fn accept(&self) -> Result<NetworkStream, Error> {
         let muxed_stream = self.inner.accept_stream().await?;
-        let new_stream = QuicStream::new(muxed_stream, Direction::Inbound, self.clone());
+        let new_stream = NetworkStream::new(muxed_stream, Direction::Inbound, self.clone());
         debug!("accepted new stream from peer {}", self.remote_peer());
 
         {
@@ -42,7 +44,7 @@ impl QuicConn {
     }
 }
 
-impl transport::ConnSecurity for QuicConn {
+impl transport::ConnSecurity for NetworkConn {
     fn local_peer(&self) -> PeerId {
         self.inner.local_peer()
     }
@@ -56,7 +58,7 @@ impl transport::ConnSecurity for QuicConn {
     }
 }
 
-impl transport::ConnMultiaddr for QuicConn {
+impl transport::ConnMultiaddr for NetworkConn {
     fn local_multiaddr(&self) -> Multiaddr {
         self.inner.local_multiaddr()
     }
@@ -67,14 +69,10 @@ impl transport::ConnMultiaddr for QuicConn {
 }
 
 #[async_trait]
-impl network::Conn for QuicConn {
-    type Stream = QuicStream;
-
-    async fn new_stream(&self, proto: Protocol) -> Result<Self::Stream, Error> {
-        use network::Stream;
-
+impl Conn for NetworkConn {
+    async fn new_stream(&self, proto: Protocol) -> Result<Box<dyn Stream>, Error> {
         let muxed_stream = self.inner.open_stream().await?;
-        let mut new_stream = QuicStream::new(muxed_stream, self.direction, self.clone());
+        let mut new_stream = NetworkStream::new(muxed_stream, self.direction, self.clone());
         new_stream.set_protocol(proto);
 
         debug!(
@@ -87,11 +85,16 @@ impl network::Conn for QuicConn {
             self.streams.lock().await.push(new_stream.clone());
         }
 
-        Ok(new_stream)
+        Ok(Box::new(new_stream))
     }
 
-    async fn streams(&self) -> Vec<Self::Stream> {
-        self.streams.lock().await.clone()
+    async fn streams(&self) -> Vec<Box<dyn Stream>> {
+        self.streams
+            .lock()
+            .await
+            .iter()
+            .map(|s| Box::new(s.clone()) as Box<dyn Stream>)
+            .collect()
     }
 
     fn direction(&self) -> Direction {
@@ -103,8 +106,6 @@ impl network::Conn for QuicConn {
     }
 
     async fn close(&self) -> Result<(), Error> {
-        use network::Stream;
-
         debug!("close connection to peer {}", self.remote_peer());
 
         let streams = { self.streams.lock().await.drain(..).collect::<Vec<_>>() };

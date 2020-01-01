@@ -11,8 +11,8 @@ use wormhole::{
     crypto::PublicKey,
     multiaddr::{Multiaddr, MultiaddrExt},
     network::{
-        Connectedness, Network, Protocol, QuicConn, QuicNetwork, QuicStream, RemoteConnHandler,
-        RemoteStreamHandler,
+        Conn, Connectedness, Network, Protocol, QuicNetwork, RemoteConnHandler,
+        RemoteStreamHandler, Stream,
     },
     peer_store::{PeerInfo, PeerStore},
 };
@@ -24,9 +24,7 @@ pub struct NoopConnHandler;
 
 #[async_trait]
 impl RemoteConnHandler for NoopConnHandler {
-    type Conn = QuicConn;
-
-    async fn handle(&self, _conn: Self::Conn) {}
+    async fn handle(&self, _conn: Box<dyn Conn>) {}
 }
 
 #[derive(Clone)]
@@ -34,9 +32,7 @@ pub struct EchoStreamHandler(UnboundedSender<String>);
 
 #[async_trait]
 impl RemoteStreamHandler for EchoStreamHandler {
-    type Stream = QuicStream;
-
-    async fn handle(&self, mut stream: Self::Stream) {
+    async fn handle(&self, mut stream: Box<dyn Stream>) {
         let mut msg = String::new();
 
         stream
