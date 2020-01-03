@@ -14,6 +14,15 @@ pub struct FramedStream {
     twin: Box<dyn network::Stream>,
 }
 
+impl Clone for FramedStream {
+    fn clone(&self) -> Self {
+        FramedStream {
+            inner: Framed::new(self.twin.clone(), LengthCodec),
+            twin: self.twin.clone(),
+        }
+    }
+}
+
 impl FramedStream {
     pub fn new(stream: Box<dyn network::Stream>) -> Self {
         let twin = stream.clone();
