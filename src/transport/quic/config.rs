@@ -13,6 +13,7 @@ use std::{convert::TryFrom, sync::Arc};
 
 #[derive(Clone)]
 pub struct QuicConfig {
+    tpt_cfg: Arc<TransportConfig>,
     host_pubkey: crypto::PublicKey,
 
     cert: rustls::Certificate,
@@ -27,7 +28,17 @@ impl QuicConfig {
         let cert = P2PSelfSignedCertificate::from_host(host_privkey, &host_pubkey)?;
         let cert_privkey = rustls::PrivateKey(cert.serialize_private_key_der());
 
+        let quinn_cfg = TransportConfig {
+            // No uni stream
+            stream_window_uni: 0,
+            // Disable connection timeout, let application control it.
+            // TODO: maybe expose this setting
+            idle_timeout: 0,
+            ..Default::default()
+        };
+
         let config = QuicConfig {
+            tpt_cfg: Arc::new(quinn_cfg),
             host_pubkey: host_pubkey,
             cert: rustls::Certificate::try_from(cert)?,
             cert_privkey,
@@ -44,11 +55,7 @@ impl QuicConfig {
         tls_cfg.set_single_cert(vec![self.cert.clone()], self.cert_privkey.clone())?;
 
         let server_config = quinn::ServerConfig {
-            transport: Arc::new(TransportConfig {
-                // No uni stream
-                stream_window_uni: 0,
-                ..Default::default()
-            }),
+            transport: Arc::clone(&self.tpt_cfg),
             crypto: Arc::new(tls_cfg),
             ..Default::default()
         };
@@ -67,11 +74,7 @@ impl QuicConfig {
             .set_certificate_verifier(Arc::new(ServerAuth));
 
         let client_config = ClientConfig {
-            transport: Arc::new(TransportConfig {
-                // No uni stream
-                stream_window_uni: 0,
-                ..Default::default()
-            }),
+            transport: Arc::clone(&self.tpt_cfg),
             crypto: Arc::new(tls_cfg),
             ..Default::default()
         };
