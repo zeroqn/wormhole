@@ -21,6 +21,13 @@ use std::net::SocketAddr;
 const CHAT_PROTO_ID: u64 = 76;
 const CHAT_NAME: &str = "chat/1.0";
 
+/// Basic Usage:
+///
+/// Ciri:
+/// cargo run --example chat -- -l 127.0.0.1:2020 -n ciri
+///
+/// Triss:
+/// cargo run --example chat -- -a 127.0.0.1:2020 -r ciri -l 127.0.0.1:2021 -n triss
 #[derive(StructOpt, Debug)]
 #[structopt(name = "chat")]
 struct Opt {

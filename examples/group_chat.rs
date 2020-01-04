@@ -24,6 +24,16 @@ const BOOTSTRAP_PROTO_ID: u64 = 1;
 const GROUP_CHAT_PROTO_ID: u64 = 77;
 const GROUP_CHAT_NAME: &str = "group-chat/1.0";
 
+/// Basic Usage:
+///
+/// Bootstrap:
+/// cargo run --example group_chat -- -l 127.0.0.1:2077
+///
+/// Ciri:
+/// cargo run --example group_chat -- -b 127.0.0.1:2077 -l 127.0.0.1:2020 -n ciri
+///
+/// Triss:
+/// cargo run --example group_chat -- -b 127.0.0.1:2077 -l 127.0.0.1:2021 -n triss
 #[derive(StructOpt, Debug)]
 #[structopt(name = "group-chat")]
 struct Opt {
@@ -278,7 +288,10 @@ async fn run_client(
         .await?;
     tokio::spawn(async move { bt_proto.handle(bt_stream).await });
 
-    if let Ok(bt_group_chat) = host.new_stream(Context::new(), &bt_peer_id, GroupChatProtocol::protocol()).await {
+    if let Ok(bt_group_chat) = host
+        .new_stream(Context::new(), &bt_peer_id, GroupChatProtocol::protocol())
+        .await
+    {
         let group_chat_proto = group_chat_proto.clone();
         tokio::spawn(async move { group_chat_proto.handle(bt_group_chat).await });
     }
