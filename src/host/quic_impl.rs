@@ -53,6 +53,7 @@ impl RemoteStreamHandler for DefaultStreamHandler {
 
 pub type DefaultNetwork = QuicNetwork<(), DefaultStreamHandler>;
 
+#[derive(Clone)]
 pub struct QuicHost {
     network: DefaultNetwork,
     switch: Arc<DefaultSwitch>,

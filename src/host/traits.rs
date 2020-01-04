@@ -66,7 +66,7 @@ pub trait Switch: Sync + Send + DynClone {
 dyn_clone::clone_trait_object!(Switch);
 
 #[async_trait]
-pub trait PeerStore: Sync + Send {
+pub trait PeerStore: Sync + Send + DynClone {
     async fn get_pubkey(&self, peer_id: &PeerId) -> Option<PublicKey>;
 
     async fn set_pubkey(&self, peer_id: PeerId, pubkey: PublicKey);
@@ -80,8 +80,10 @@ pub trait PeerStore: Sync + Send {
     async fn add_multiaddr(&self, peer_id: PeerId, addr: Multiaddr);
 }
 
+dyn_clone::clone_trait_object!(PeerStore);
+
 #[async_trait]
-pub trait Host {
+pub trait Host: Sync + Send + DynClone {
     fn peer_id(&self) -> &PeerId;
 
     fn peer_store(&self) -> crate::peer_store::PeerStore;
@@ -115,3 +117,5 @@ pub trait Host {
 
     async fn subscribe(&self) -> mpsc::Receiver<NetworkEvent>;
 }
+
+dyn_clone::clone_trait_object!(Host);
