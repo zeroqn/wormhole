@@ -7,13 +7,12 @@ use bytes::Bytes;
 use creep::Context;
 use futures::{
     channel::mpsc::{channel, Receiver},
-    lock::BiLock,
     SinkExt, StreamExt, TryStreamExt,
 };
 use tracing::{debug, error};
 
 use wormhole::{
-    bootstrap::{BootstrapProtocol, Event as BtEvent},
+    bootstrap::{self, BootstrapProtocol},
     crypto::PublicKey,
     host::{FramedStream, Host, ProtocolHandler, QuicHost},
     multiaddr::{Multiaddr, MultiaddrExt},
@@ -23,12 +22,15 @@ use wormhole::{
 
 use std::net::ToSocketAddrs;
 
+const BOOTSTRAP_PROTO_ID: u64 = 1;
+const ECHO_PROTO_ID: u64 = 2;
+
 #[derive(Clone)]
 pub struct EchoProtocol;
 
 impl EchoProtocol {
     fn proto() -> Protocol {
-        Protocol::new(1, "echo")
+        Protocol::new(ECHO_PROTO_ID, "echo")
     }
 
     async fn echo(stream: &mut FramedStream) -> Result<(), Error> {
@@ -42,7 +44,7 @@ impl EchoProtocol {
 #[async_trait]
 impl ProtocolHandler for EchoProtocol {
     fn proto_id(&self) -> ProtocolId {
-        2.into()
+        ECHO_PROTO_ID.into()
     }
 
     fn proto_name(&self) -> &'static str {
@@ -59,98 +61,97 @@ impl ProtocolHandler for EchoProtocol {
 async fn make_xenovox<A: ToSocketAddrs>(
     addr: A,
     peer_store: PeerStore,
-    is_server: bool,
-) -> Result<(QuicHost, PublicKey, Multiaddr, Receiver<BtEvent>), Error> {
+    bt_mode: bootstrap::Mode,
+) -> Result<
+    (
+        QuicHost,
+        PublicKey,
+        Multiaddr,
+        BootstrapProtocol,
+        Receiver<bootstrap::Event>,
+    ),
+    Error,
+> {
     let (sk, pk) = random_keypair();
+    debug!("peer id {}", pk.peer_id());
 
     let mut sock_addr = addr.to_socket_addrs()?;
     let sock_addr = sock_addr.next().ok_or(CommonError::NoSocketAddress)?;
-    let maddr = Multiaddr::quic_peer(sock_addr, pk.peer_id());
+    let multiaddr = Multiaddr::quic_peer(sock_addr, pk.peer_id());
 
-    let peer_info = PeerInfo::with_all(pk.clone(), Connectedness::CanConnect, maddr.clone());
+    // Register our self
+    let peer_info = PeerInfo::with_all(pk.clone(), Connectedness::Connected, multiaddr.clone());
     peer_store.register(peer_info).await;
 
-    debug!("peer id {}", pk.peer_id());
-
-    let (ev_tx, ev_rx) = channel(5);
+    let (bt_evt_tx, bt_evt_rx) = channel(100);
     // TieDing
     let bt_x_proto = BootstrapProtocol::new(
-        peer_store.clone(),
+        BOOTSTRAP_PROTO_ID.into(),
         pk.peer_id(),
-        maddr.clone(),
-        is_server,
-        ev_tx,
+        multiaddr.clone(),
+        bt_mode,
+        peer_store.clone(),
+        bt_evt_tx,
     );
 
     let mut host = QuicHost::make(&sk, peer_store.clone())?;
-    host.add_handler(Box::new(bt_x_proto)).await?;
+    if bt_mode == bootstrap::Mode::Publisher {
+        host.add_handler(Box::new(bt_x_proto.clone())).await?;
+    }
     host.add_handler(Box::new(EchoProtocol)).await?;
-    host.listen(maddr.clone()).await?;
+    host.listen(multiaddr.clone()).await?;
 
-    Ok((host, pk, maddr, ev_rx))
+    Ok((host, pk, multiaddr, bt_x_proto, bt_evt_rx))
 }
 
 #[tokio::test]
 async fn test_bootstrap_protocol() -> Result<(), Error> {
+    use bootstrap::Mode;
+
     tracing::subscriber::set_global_default(
         tracing_subscriber::FmtSubscriber::builder()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .finish(),
     )?;
 
-    let peer_store = PeerStore::default();
+    let geralt_store = PeerStore::default();
+    let ciri_store = PeerStore::default();
+    let yene_store = PeerStore::default();
     let msg = "watch 20-12-2019";
 
-    let (_geralt_xenovox, geralt_pubkey, geralt_maddr, ..) =
-        make_xenovox(("127.0.0.1", 2077), peer_store.clone(), true).await?;
-    let (ciri_xenovox, ciri_pubkey, ciri_maddr, ..) =
-        make_xenovox(("127.0.0.1", 2020), peer_store.clone(), false).await?;
+    let (_geralt_xenovox, geralt_pubkey, geralt_maddr, .., _geralt_bt_evt_rx) =
+        make_xenovox(("127.0.0.1", 2077), geralt_store, Mode::Publisher).await?;
+    let (ciri_xenovox, ciri_pubkey, _, ciri_bt, .., _ciri_bt_evt_rx) =
+        make_xenovox(("127.0.0.1", 2020), ciri_store.clone(), Mode::Subscriber).await?;
+    let (yennefer_xenovox, .., yene_bt, mut yene_bt_evt_rx) =
+        make_xenovox(("127.0.0.1", 2021), yene_store.clone(), Mode::Subscriber).await?;
 
-    let (ev_tx, _ev_rx) = channel(10);
-    let ciri_stream = ciri_xenovox
-        .new_stream(
-            Context::new(),
-            &geralt_pubkey.peer_id(),
-            BootstrapProtocol::protocol(),
-        )
-        .await?;
-    let (w_stream, r_stream) = BiLock::new(ciri_stream);
-    BootstrapProtocol::publish_ourself(
-        Context::new(),
-        ciri_pubkey.peer_id(),
-        ciri_maddr.clone(),
-        w_stream,
-    )
-    .await?;
-    BootstrapProtocol::new_arrived(Context::new(), peer_store.clone(), r_stream, ev_tx).await?;
-
-    let yene_store = PeerStore::default();
-    let geralt_info = PeerInfo::with_addr(geralt_pubkey.peer_id(), geralt_maddr);
+    // Register geralt info, he is bootstrap
+    let geralt_peer_id = geralt_pubkey.peer_id();
+    let geralt_info = PeerInfo::with_addr(geralt_peer_id.clone(), geralt_maddr);
+    ciri_store.register(geralt_info.clone()).await;
     yene_store.register(geralt_info).await;
 
-    let (yennefer_xenovox, yene_pubkey, yene_maddr, ..) =
-        make_xenovox(("127.0.0.1", 2021), yene_store.clone(), false).await?;
-
-    let yene_stream = yennefer_xenovox
+    let ciri_bt_stream = ciri_xenovox
         .new_stream(
             Context::new(),
-            &geralt_pubkey.peer_id(),
-            BootstrapProtocol::protocol(),
+            &geralt_peer_id,
+            BootstrapProtocol::protocol(BOOTSTRAP_PROTO_ID.into()),
         )
         .await?;
+    tokio::spawn(async move { ciri_bt.handle(ciri_bt_stream).await });
 
-    let (ev_tx, mut ev_rx) = channel(10);
-    let (w_stream, r_stream) = BiLock::new(yene_stream);
-    BootstrapProtocol::publish_ourself(
-        Context::new(),
-        yene_pubkey.peer_id(),
-        yene_maddr.clone(),
-        w_stream,
-    )
-    .await?;
-    BootstrapProtocol::new_arrived(Context::new(), yene_store.clone(), r_stream, ev_tx).await?;
+    let yene_bt_stream = yennefer_xenovox
+        .new_stream(
+            Context::new(),
+            &geralt_peer_id,
+            BootstrapProtocol::protocol(BOOTSTRAP_PROTO_ID.into()),
+        )
+        .await?;
+    tokio::spawn(async move { yene_bt.handle(yene_bt_stream).await });
 
-    let event = ev_rx.next().await.ok_or(CommonError::NoMessage)?;
+    // After new arrival, yene should have ciri info
+    let event = yene_bt_evt_rx.next().await.ok_or(CommonError::NoMessage)?;
     debug!("event {}", event);
 
     let mut yene_stream = yennefer_xenovox
