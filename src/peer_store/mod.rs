@@ -20,6 +20,7 @@ pub enum PeerStoreError {
     PeerIdNotMatchPubKey { peer_id: PeerId, pubkey: PublicKey },
 }
 
+#[derive(Clone)]
 pub struct PeerInfo {
     peer_id: PeerId,
     pubkey: Option<PublicKey>,

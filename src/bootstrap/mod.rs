@@ -2,7 +2,7 @@ use crate::{
     crypto::PeerId,
     host::{FramedStream, ProtocolHandler},
     multiaddr::Multiaddr,
-    network::{Connectedness, Protocol, ProtocolId},
+    network::{Connectedness, Direction, Protocol, ProtocolId},
     peer_store::{self, PeerStore},
 };
 
@@ -11,22 +11,15 @@ use async_trait::async_trait;
 use bytes::BytesMut;
 use creep::Context;
 use derive_more::Display;
-use futures::{channel::mpsc::Sender, lock::BiLock, SinkExt, TryStreamExt};
+use futures::{channel::mpsc::Sender, SinkExt, TryStreamExt};
 use prost::Message;
 use tokio::time::delay_for;
 use tracing::{debug, error};
 
-use std::{
-    convert::TryFrom,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+use std::{convert::TryFrom, time::Duration};
 
-type ReadStream = BiLock<FramedStream>;
-type WriteStream = BiLock<FramedStream>;
+/// Protocol name, version appended
+const PROTO_NAME: &str = "/bootstrap/1.0";
 
 #[derive(thiserror::Error, Debug)]
 pub enum BootstrapError {
@@ -38,6 +31,14 @@ pub enum BootstrapError {
 pub enum Event {
     #[display(fmt = "got new peer info from bootstrap peer")]
     NewArrived,
+}
+
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    #[display(fmt = "publisher mode")]
+    Publisher,
+    #[display(fmt = "subscriber mode")]
+    Subscriber,
 }
 
 #[derive(Message)]
@@ -73,40 +74,39 @@ struct Peers {
 // TODO: shutdown logic
 #[derive(Clone)]
 pub struct BootstrapProtocol {
-    peer_store: PeerStore,
-
+    proto_id: ProtocolId,
     peer_id: PeerId,
     local_multiaddr: Multiaddr,
 
-    // TODO: mask bits
-    // If we aren't server, just publish ourself then listen on new arrived.
-    is_server: Arc<AtomicBool>,
+    mode: Mode,
 
-    event_tx: Sender<Event>,
+    peer_store: PeerStore,
+    evt_tx: Sender<Event>,
 }
 
 impl BootstrapProtocol {
     pub fn new(
-        peer_store: PeerStore,
+        proto_id: ProtocolId,
         peer_id: PeerId,
         local_multiaddr: Multiaddr,
-        is_server: bool,
-        event_tx: Sender<Event>,
+        mode: Mode,
+        peer_store: PeerStore,
+        evt_tx: Sender<Event>,
     ) -> Self {
         BootstrapProtocol {
-            peer_store,
-
+            proto_id,
             peer_id,
             local_multiaddr,
 
-            is_server: Arc::new(AtomicBool::new(is_server)),
+            mode,
 
-            event_tx,
+            peer_store,
+            evt_tx,
         }
     }
 
-    pub fn protocol() -> Protocol {
-        Protocol::new(1, "bootstrap")
+    pub fn protocol(proto_id: ProtocolId) -> Protocol {
+        Protocol::new(*proto_id, PROTO_NAME)
     }
 
     // TODO: pass timeout through ctx
@@ -114,7 +114,7 @@ impl BootstrapProtocol {
         _ctx: Context,
         peer_id: PeerId,
         local_multiaddr: Multiaddr,
-        w_stream: WriteStream,
+        w_stream: &mut FramedStream,
     ) -> Result<(), Error> {
         debug!("publish ourself {}", local_multiaddr);
 
@@ -133,18 +133,16 @@ impl BootstrapProtocol {
         };
 
         w_stream
-            .lock()
-            .await
             .send(encoded_ourself)
             .await
             .context("publish ourself")?;
         Ok(())
     }
 
-    pub async fn push_peers(
+    pub async fn publish_peers(
         _ctx: Context,
-        peer_store: PeerStore,
-        w_stream: &mut WriteStream,
+        peer_store: &PeerStore,
+        w_stream: &mut FramedStream,
     ) -> Result<(), Error> {
         let peer_infos = peer_store
             .choose(40)
@@ -163,25 +161,21 @@ impl BootstrapProtocol {
             encoded_peers.freeze()
         };
 
-        w_stream
-            .lock()
-            .await
-            .send(encoded_peers)
-            .await
-            .context("push peers")?;
+        w_stream.send(encoded_peers).await.context("push peers")?;
         Ok(())
     }
 
     // TODO: set interval through ctx
-    pub async fn interval_push_peers(
+    pub async fn interval_publish_peers(
         ctx: Context,
-        peer_store: PeerStore,
-        mut w_stream: WriteStream,
+        peer_store: &PeerStore,
+        w_stream: &mut FramedStream,
     ) -> Result<(), Error> {
         loop {
-            Self::push_peers(ctx.clone(), peer_store.clone(), &mut w_stream).await?;
+            Self::publish_peers(ctx.clone(), peer_store, w_stream).await?;
 
             for _ in 0..20 {
+                // TODO: better shutdown check
                 delay_for(Duration::from_secs(2)).await
             }
         }
@@ -189,13 +183,11 @@ impl BootstrapProtocol {
 
     pub async fn new_arrived(
         _ctx: Context,
-        peer_store: PeerStore,
-        r_stream: ReadStream,
-        mut ev_tx: Sender<Event>,
+        peer_store: &PeerStore,
+        r_stream: &mut FramedStream,
+        evt_tx: &mut Sender<Event>,
     ) -> Result<(), Error> {
         let encoded_peers = r_stream
-            .lock()
-            .await
             .try_next()
             .await?
             .ok_or(BootstrapError::NoNewArrive)?;
@@ -205,7 +197,7 @@ impl BootstrapProtocol {
         let store_peer_infos = decoded_peers
             .data
             .into_iter()
-            .map(|b_pi| b_pi.into_store_info())
+            .map(PeerInfo::into_store_info)
             .collect::<Result<Vec<_>, Error>>()?;
 
         debug!("new arrived");
@@ -215,7 +207,6 @@ impl BootstrapProtocol {
 
             if !peer_store.contains(peer_info.peer_id()).await {
                 peer_info.set_connectedness(Connectedness::CanConnect);
-
                 peer_store.register(peer_info).await
             } else {
                 let peer_id = peer_info.peer_id().to_owned();
@@ -225,7 +216,7 @@ impl BootstrapProtocol {
             }
         }
 
-        ev_tx
+        evt_tx
             .try_send(Event::NewArrived)
             .context("impossible, try send new arrived event")?;
 
@@ -236,48 +227,71 @@ impl BootstrapProtocol {
 #[async_trait]
 impl ProtocolHandler for BootstrapProtocol {
     fn proto_id(&self) -> ProtocolId {
-        1.into()
+        self.proto_id
     }
 
     fn proto_name(&self) -> &'static str {
-        "bootstrap"
+        PROTO_NAME
     }
 
     async fn handle(&self, stream: FramedStream) {
-        let (w_stream, r_stream) = BiLock::new(stream);
+        let direction = stream.conn().direction();
+        let mode = self.mode;
+        let mut w_stream = stream.clone();
 
-        if !self.is_server.load(Ordering::SeqCst) {
-            let peer_id = self.peer_id.clone();
-            let local_multiaddr = self.local_multiaddr.clone();
+        let mut stream_reset = false;
 
-            tokio::spawn(async move {
-                if let Err(err) =
-                    Self::publish_ourself(Context::new(), peer_id, local_multiaddr, w_stream).await
-                {
-                    error!("publish ourself: {}", err);
-                }
-            });
-        } else {
-            let peer_store = self.peer_store.clone();
+        match (mode, direction) {
+            (Mode::Publisher, Direction::Inbound) => {
+                let peer_store = self.peer_store.clone();
 
-            tokio::spawn(async move {
-                if let Err(err) =
-                    Self::interval_push_peers(Context::new(), peer_store, w_stream).await
-                {
-                    error!("push peers: {}", err);
-                }
-            });
+                tokio::spawn(async move {
+                    if let Err(err) =
+                        Self::interval_publish_peers(Context::new(), &peer_store, &mut w_stream)
+                            .await
+                    {
+                        error!("publish peer {}", err);
+                    }
+                });
+            }
+            (Mode::Subscriber, Direction::Outbound) => {
+                let peer_id = self.peer_id.clone();
+                let local_multiaddr = self.local_multiaddr.clone();
+
+                tokio::spawn(async move {
+                    if let Err(err) = Self::publish_ourself(
+                        Context::new(),
+                        peer_id,
+                        local_multiaddr,
+                        &mut w_stream,
+                    )
+                    .await
+                    {
+                        error!("publish ourself {}", err);
+                    }
+                });
+            }
+            _ => {
+                // Publisher should not dial out to collect peers. Subscribe
+                // should close incoming stream for peer query.
+                stream_reset = true;
+                w_stream.reset().await;
+            }
         }
 
-        if let Err(err) = Self::new_arrived(
-            Context::new(),
-            self.peer_store.clone(),
-            r_stream,
-            self.event_tx.clone(),
-        )
-        .await
-        {
-            error!("{} new arrived: {}", self.peer_id, err);
+        if !stream_reset {
+            let mut r_stream = stream;
+            let mut evt_tx = self.evt_tx.clone();
+
+            loop {
+                if let Err(err) =
+                    Self::new_arrived(Context::new(), &self.peer_store, &mut r_stream, &mut evt_tx)
+                        .await
+                {
+                    error!("{} new arrived: {}", self.peer_id, err);
+                    break;
+                }
+            }
         }
     }
 }
