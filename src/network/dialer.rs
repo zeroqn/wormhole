@@ -73,22 +73,26 @@ impl NetworkDialer {
 #[async_trait]
 impl Dialer for NetworkDialer {
     async fn dial_peer(&self, ctx: Context, peer_id: &PeerId) -> Result<Box<dyn Conn>, Error> {
+        if let Some(conn) = self.conn_pool.conn_to_peer(peer_id).await {
+            debug!("reuse exist peer {} connection", peer_id);
+            return Ok(conn);
+        }
+
         if let Some(addrs) = self.peer_store.get_multiaddrs(peer_id).await {
             // TODO: simply use first address right now
             if let Some(addr) = addrs.into_iter().next() {
                 debug!("dial peer {}", addr);
 
                 let conn = self.transport.dial(ctx, addr, peer_id.to_owned()).await?;
+                let conn = NetworkConn::new(conn, Direction::Outbound);
+                debug!("connected to peer {}", peer_id);
 
                 self.peer_store
                     .set_connectedness(peer_id, Connectedness::Connected)
                     .await;
+                self.conn_pool.insert(peer_id.to_owned(), conn.clone()).await;
 
-                debug!("connected to peer {}", peer_id);
-
-                let boxed_conn: Box<dyn Conn> =
-                    Box::new(NetworkConn::new(conn, Direction::Outbound));
-                return Ok(boxed_conn);
+                return Ok(Box::new(conn) as Box<dyn Conn>);
             }
         }
 
