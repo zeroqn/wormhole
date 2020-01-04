@@ -1,7 +1,7 @@
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use creep::Context;
-use futures::{SinkExt, TryStreamExt};
+use futures::{channel::mpsc, SinkExt, StreamExt, TryStreamExt};
 use structopt::{self, StructOpt};
 use tokio::{
     io::{stdin, AsyncBufReadExt, BufReader},
@@ -9,6 +9,7 @@ use tokio::{
 };
 use tracing::{debug, error, warn};
 use wormhole::{
+    bootstrap::{self, BootstrapProtocol},
     crypto::{PeerId, PrivateKey, PublicKey},
     host::{FramedStream, Host, ProtocolHandler, QuicHost},
     multiaddr::{Multiaddr, MultiaddrExt},
@@ -18,26 +19,24 @@ use wormhole::{
 
 use std::net::SocketAddr;
 
-const CHAT_PROTO_ID: u64 = 76;
-const CHAT_NAME: &str = "chat/1.0";
+const BOOTSTRAP_NICKNAME: &'static str = "bot";
+const BOOTSTRAP_PROTO_ID: u64 = 1;
+const GROUP_CHAT_PROTO_ID: u64 = 77;
+const GROUP_CHAT_NAME: &str = "group-chat/1.0";
 
 #[derive(StructOpt, Debug)]
-#[structopt(name = "chat")]
+#[structopt(name = "group-chat")]
 struct Opt {
-    /// Remote peer address
-    #[structopt(short = "a", long)]
-    remote_addr: Option<SocketAddr>,
-
-    /// Remote nick name
-    #[structopt(short = "r", long)]
-    remote_nickname: Option<String>,
+    /// Remote bootstrap address
+    #[structopt(short = "b", long)]
+    bootstrap_addr: Option<SocketAddr>,
 
     /// Our listen address
     #[structopt(short = "l", long)]
     listen: SocketAddr,
 
     /// Our nickname
-    #[structopt(short = "n", long, default_value = "bot")]
+    #[structopt(short = "n", long, default_value = "minion from despicable me")]
     nickname: String,
 }
 
@@ -77,32 +76,32 @@ impl Persona {
 }
 
 #[derive(Clone)]
-struct ChatProtocol {
+struct GroupChatProtocol {
     local_nickname: String,
     local_msg_subscriber: broadcast::Sender<String>,
 }
 
-impl ChatProtocol {
+impl GroupChatProtocol {
     fn new(local_nickname: String, local_msg_subscriber: broadcast::Sender<String>) -> Self {
-        ChatProtocol {
+        GroupChatProtocol {
             local_nickname,
             local_msg_subscriber,
         }
     }
 
     fn protocol() -> Protocol {
-        Protocol::new(CHAT_PROTO_ID, CHAT_NAME)
+        Protocol::new(GROUP_CHAT_PROTO_ID, GROUP_CHAT_NAME)
     }
 }
 
 #[async_trait]
-impl ProtocolHandler for ChatProtocol {
+impl ProtocolHandler for GroupChatProtocol {
     fn proto_id(&self) -> ProtocolId {
-        CHAT_PROTO_ID.into()
+        GROUP_CHAT_PROTO_ID.into()
     }
 
     fn proto_name(&self) -> &'static str {
-        CHAT_NAME
+        GROUP_CHAT_NAME
     }
 
     async fn handle(&self, stream: FramedStream) {
@@ -173,17 +172,24 @@ pub async fn main() -> AnyResult<()> {
     // Broadcast channel to all connected peers
     let (local_msg_tx, _local_msg_rx) = broadcast::channel(10);
 
-    let our = Persona::new(opt.nickname, opt.listen);
-    let remote = if let Some(remote_addr) = opt.remote_addr {
-        let remote_nickname = opt.remote_nickname.expect("remote nickname");
-        Some(Persona::new(remote_nickname, remote_addr))
+    // Bootstrap node always use hardcode name, so that we don't need
+    // to pass bootstrap peer id and it's multiaddr from command line.
+    let nickname = if opt.bootstrap_addr.is_none() {
+        BOOTSTRAP_NICKNAME.to_owned()
+    } else {
+        opt.nickname
+    };
+
+    let our = Persona::new(nickname, opt.listen);
+    let bt = if let Some(bt_addr) = opt.bootstrap_addr {
+        Some(Persona::new(BOOTSTRAP_NICKNAME.to_owned(), bt_addr))
     } else {
         None
     };
 
     let local_msg_subscriber = local_msg_tx.clone();
     tokio::spawn(async move {
-        if let Err(err) = run_client(our, remote, local_msg_subscriber).await {
+        if let Err(err) = run_client(our, bt, local_msg_subscriber).await {
             error!("run client {}", err);
         }
     });
@@ -205,7 +211,7 @@ pub async fn main() -> AnyResult<()> {
 
 async fn run_client(
     our: Persona,
-    remote: Option<Persona>,
+    bootstrap: Option<Persona>,
     local_msg_subscriber: broadcast::Sender<String>,
 ) -> AnyResult<()> {
     debug!("our peer id {}", our.peer_id);
@@ -214,9 +220,9 @@ async fn run_client(
     peer_store
         .register(our.to_info(Connectedness::Connected))
         .await;
-    if let Some(ref remote) = remote {
+    if let Some(ref bt) = bootstrap {
         peer_store
-            .register(remote.to_info(Connectedness::CanConnect))
+            .register(bt.to_info(Connectedness::CanConnect))
             .await;
     }
 
@@ -224,18 +230,82 @@ async fn run_client(
         &Persona::make_privkey_from_nickname(&our.nickname),
         peer_store.clone(),
     )?;
-    let chat_proto = ChatProtocol::new(our.nickname.clone(), local_msg_subscriber.clone());
+    let group_chat_proto =
+        GroupChatProtocol::new(our.nickname.clone(), local_msg_subscriber.clone());
 
-    host.add_handler(Box::new(chat_proto.clone())).await?;
+    let (bt_evt_tx, mut bt_evt_rx) = mpsc::channel(10);
+    let bt_mode = if bootstrap.is_none() {
+        bootstrap::Mode::Publisher
+    } else {
+        bootstrap::Mode::Subscriber
+    };
+    let bt_proto = BootstrapProtocol::new(
+        BOOTSTRAP_PROTO_ID.into(),
+        our.peer_id.clone(),
+        our.multiaddr.clone(),
+        bt_mode,
+        peer_store.clone(),
+        bt_evt_tx,
+    );
+
+    host.add_handler(Box::new(group_chat_proto.clone())).await?;
     host.listen(our.multiaddr.clone()).await?;
 
-    if let Some(remote) = remote {
-        match host
-            .new_stream(Context::new(), &remote.peer_id, ChatProtocol::protocol())
-            .await
-        {
-            Ok(chat_stream) => chat_proto.clone().handle(chat_stream).await,
-            Err(err) => warn!("create new chat stream {}", err),
+    if bt_mode == bootstrap::Mode::Publisher {
+        host.add_handler(Box::new(bt_proto)).await?;
+
+        // Drive bootstrap arrival
+        tokio::spawn(async move {
+            loop {
+                if let None = bt_evt_rx.next().await {
+                    debug!("bootstrap: no more new peers");
+                    break;
+                }
+            }
+        });
+        return Ok(());
+    }
+
+    let bt_peer_id = bootstrap
+        .expect("subscriber should have bootstrap info")
+        .peer_id;
+    let bt_stream = host
+        .new_stream(
+            Context::new(),
+            &bt_peer_id,
+            BootstrapProtocol::protocol(BOOTSTRAP_PROTO_ID.into()),
+        )
+        .await?;
+    tokio::spawn(async move { bt_proto.handle(bt_stream).await });
+
+    if let Ok(bt_group_chat) = host.new_stream(Context::new(), &bt_peer_id, GroupChatProtocol::protocol()).await {
+        let group_chat_proto = group_chat_proto.clone();
+        tokio::spawn(async move { group_chat_proto.handle(bt_group_chat).await });
+    }
+
+    loop {
+        if let None = bt_evt_rx.next().await {
+            debug!("no more new peers");
+            break;
+        }
+
+        let peers = peer_store.choose(40).await;
+        for (peer_id, _multiaddr) in peers.into_iter() {
+            if peer_id != our.peer_id
+                && peer_id != bt_peer_id
+                && peer_store.get_connectedness(&peer_id).await == Connectedness::CanConnect
+            {
+                match host
+                    .new_stream(Context::new(), &peer_id, GroupChatProtocol::protocol())
+                    .await
+                {
+                    Ok(group_chat) => {
+                        let group_chat_proto = group_chat_proto.clone();
+                        tokio::spawn(async move { group_chat_proto.handle(group_chat).await });
+                    }
+                    Err(err) => warn!("create new group chat to peer {} {}", peer_id, err),
+                }
+            }
         }
     }
 
