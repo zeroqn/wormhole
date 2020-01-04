@@ -150,6 +150,9 @@ impl Switch for DefaultSwitch {
         let register = { self.register.lock().await.clone() };
         let proto_handler = match_protocol(register, protocols_in_offer).ok_or(NoProtocolMatch)?;
 
+        let proto = Protocol::new(*proto_handler.proto_id(), proto_handler.proto_name());
+        stream.set_protocol(proto);
+
         let r#use = Use::new(
             *proto_handler.proto_id(),
             proto_handler.proto_name().to_owned(),

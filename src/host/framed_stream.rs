@@ -33,6 +33,10 @@ impl FramedStream {
         }
     }
 
+    pub(crate) fn set_protocol(&mut self, proto: Protocol) {
+        self.twin.set_protocol(proto)
+    }
+
     pub fn protocol(&self) -> Option<Protocol> {
         self.twin.protocol()
     }
