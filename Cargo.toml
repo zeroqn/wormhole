@@ -19,7 +19,7 @@ async-trait = "0.1"
 anyhow = "1.0"
 tracing = "0.1"
 derive_more = "0.99"
-tokio = { version = "0.2", features = ["rt-core", "rt-threaded", "time", "macros"] }
+tokio = { version = "0.2", features = ["rt-core", "rt-threaded", "time", "macros", "sync", "io-std", "io-util"] }
 rcgen = "0.7"
 # for bytes 0.5
 prost = { git = "https://github.com/danburkert/prost" }
@@ -31,8 +31,11 @@ secp256k1 = "0.17"
 bs58 = "0.3"
 webpki = "0.21"
 futures_codec = { git = "https://github.com/matthunz/futures-codec", rev = "218e59b" }
-dyn-clone = "1.0.1"
+dyn-clone = "1.0"
 
 [dev-dependencies]
 rand = "0.7"
 tracing-subscriber = "0.1"
+structopt = "0.3"
+ophelia-hasher = "0.2.0"
+ophelia-hasher-keccak256 = "0.2.0"
