@@ -1,4 +1,4 @@
-use crate::crypto::{self, CryptoError};
+use crate::crypto;
 
 use anyhow::Error;
 use derive_more::Display;
@@ -36,18 +36,6 @@ pub enum DerCertificateVerifyError {
 
     #[error("unexpected internal error {0}")]
     UnexpectedError(Error),
-}
-
-impl From<CryptoError> for DerCertificateVerifyError {
-    fn from(err: CryptoError) -> Self {
-        use CryptoError::*;
-
-        match err {
-            InvalidPublicKey(err) => Self::InvalidPeerPublicKey(err.into()),
-            InvalidSignature(err) => Self::InvalidProof(err.into()),
-            _ => Self::UnexpectedError(err.into()),
-        }
-    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -138,7 +126,10 @@ impl P2PSelfSignedCertificate {
 
         // Now we need to produce this proof extension
         let cert_proof = Self::gen_proof(cert_pubkey, host_privkey)?;
-        let signed_key = SignedKey::new(host_pubkey.as_slice(), cert_proof.as_slice());
+        let signed_key = SignedKey::new(
+            host_pubkey.to_bytes().as_ref(),
+            cert_proof.to_bytes().as_ref(),
+        );
 
         let mut encoded_key = Vec::with_capacity(signed_key.encoded_len());
         signed_key.encode(&mut encoded_key)?;
@@ -198,8 +189,10 @@ impl P2PSelfSignedCertificate {
             return Err(UnsupportedPeerPublicKeyType(pubkey_in_ext.key_type));
         }
 
-        let peer_pubkey = crypto::PublicKey::from_slice(&pubkey_in_ext.data)?;
-        let sig = crypto::Signature::from_slice(signed_key.signature.as_slice())?;
+        let peer_pubkey =
+            crypto::PublicKey::from_slice(&pubkey_in_ext.data).map_err(InvalidPeerPublicKey)?;
+        let sig =
+            crypto::Signature::from_slice(signed_key.signature.as_slice()).map_err(InvalidProof)?;
 
         Ok((sig, peer_pubkey))
     }
@@ -266,12 +259,14 @@ impl P2PSelfSignedCertificate {
         cert_pubkey: &[u8],
         host_pubkey: &crypto::PublicKey,
     ) -> Result<(), DerCertificateVerifyError> {
+        use DerCertificateVerifyError::*;
+
         let mut buf = [0u8; 1000];
         let len = Self::salt_cert_pubkey(cert_pubkey, &mut buf)?;
         let salted_pk = &buf[..len];
 
         let msg = crypto::keccak256_hash(salted_pk);
-        Ok(host_pubkey.verify(&msg, proof)?)
+        Ok(host_pubkey.verify(&msg, proof).map_err(InvalidProof)?)
     }
 }
 
