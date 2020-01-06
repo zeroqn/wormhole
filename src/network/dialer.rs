@@ -90,7 +90,9 @@ impl Dialer for NetworkDialer {
                 self.peer_store
                     .set_connectedness(peer_id, Connectedness::Connected)
                     .await;
-                self.conn_pool.insert(peer_id.to_owned(), conn.clone()).await;
+                self.conn_pool
+                    .insert(peer_id.to_owned(), conn.clone())
+                    .await;
 
                 return Ok(Box::new(conn) as Box<dyn Conn>);
             }
