@@ -1,78 +1,48 @@
 use anyhow::Error;
-use lazy_static::lazy_static;
+use bytes::Bytes;
+use ophelia_hasher::HashValue;
+use ophelia_secp256k1::{Secp256k1PrivateKey, Secp256k1PublicKey, Secp256k1Signature};
 use parity_multihash::{self as multihash, Multihash};
-use secp256k1::Secp256k1;
 
-use std::fmt;
+use std::{convert::TryFrom, fmt};
 
-lazy_static! {
-    static ref SECP256K1: Secp256k1<secp256k1::All> = Secp256k1::new();
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum CryptoError {
-    #[error("invalid private key {0}")]
-    InvalidPrivateKey(Error),
-
-    #[error("invalid public key {0}")]
-    InvalidPublicKey(Error),
-
-    #[error("invalid signature {0}")]
-    InvalidSignature(Error),
-
-    #[error("unexpect error {0}")]
-    UnexpectedError(Error),
-}
-
-impl From<secp256k1::Error> for CryptoError {
-    fn from(err: secp256k1::Error) -> Self {
-        use secp256k1::Error::*;
-
-        match err {
-            InvalidSecretKey => Self::InvalidPrivateKey(err.into()),
-            InvalidPublicKey => Self::InvalidPublicKey(err.into()),
-            IncorrectSignature | InvalidSignature => Self::InvalidSignature(err.into()),
-            _ => Self::UnexpectedError(err.into()),
-        }
-    }
-}
-
-pub struct Signature([u8; 64]);
+pub struct Signature(Secp256k1Signature);
 
 impl Signature {
-    pub fn from_slice(data: &[u8]) -> Result<Self, CryptoError> {
-        let sig = secp256k1::Signature::from_compact(data)?;
-
-        Ok(Signature(sig.serialize_compact()))
+    pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
+        // Note: compact formate
+        Ok(Signature(Secp256k1Signature::try_from(data)?))
     }
 
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0
+    pub fn to_bytes(&self) -> Bytes {
+        use ophelia::Signature;
+
+        self.0.to_bytes()
     }
 }
 
-pub struct PrivateKey(secp256k1::SecretKey);
+pub struct PrivateKey(Secp256k1PrivateKey);
 
 impl PrivateKey {
-    pub fn from_slice(data: &[u8]) -> Result<Self, CryptoError> {
-        Ok(PrivateKey(secp256k1::SecretKey::from_slice(data)?))
+    pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
+        Ok(PrivateKey(Secp256k1PrivateKey::try_from(data)?))
     }
 
-    pub fn sign(&self, msg: &[u8]) -> Result<Signature, CryptoError> {
-        let msg = secp256k1::Message::from_slice(msg)?;
-        let sig = SECP256K1.sign(&msg, &self.0);
+    pub fn sign(&self, msg: &HashValue) -> Result<Signature, Error> {
+        use ophelia::PrivateKey;
 
-        Ok(Signature(sig.serialize_compact()))
+        Ok(Signature(self.0.sign_message(msg)))
     }
 
     pub fn pubkey(&self) -> PublicKey {
-        PublicKey(secp256k1::PublicKey::from_secret_key(&SECP256K1, &self.0).serialize())
+        use ophelia::ToPublicKey;
+
+        PublicKey(self.0.pub_key())
     }
 }
 
-// TODO: replace with ophelia trait
 #[derive(Clone)]
-pub struct PublicKey([u8; 33]);
+pub struct PublicKey(Secp256k1PublicKey);
 
 impl fmt::Debug for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -87,31 +57,29 @@ impl fmt::Display for PublicKey {
 }
 
 impl PublicKey {
-    pub fn from_slice(data: &[u8]) -> Result<Self, CryptoError> {
-        Ok(PublicKey(
-            secp256k1::PublicKey::from_slice(data)?.serialize(),
-        ))
+    pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
+        Ok(PublicKey(Secp256k1PublicKey::try_from(data)?))
     }
 
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0
+    pub fn to_bytes(&self) -> Bytes {
+        use ophelia::PublicKey;
+
+        self.0.to_bytes()
     }
 
     pub fn string(&self) -> String {
-        bs58::encode(self.as_slice()).into_string()
+        bs58::encode(self.to_bytes().as_ref()).into_string()
     }
 
-    pub fn verify(&self, msg: &[u8], sig: &Signature) -> Result<(), CryptoError> {
-        let msg = secp256k1::Message::from_slice(msg)?;
-        let sig = secp256k1::Signature::from_compact(sig.as_slice())?;
-        let pubkey = secp256k1::PublicKey::from_slice(&self.0)?;
+    pub fn verify(&self, msg: &HashValue, sig: &Signature) -> Result<(), Error> {
+        use ophelia::SignatureVerify;
 
-        Ok(SECP256K1.verify(&msg, &sig, &pubkey)?)
+        Ok(sig.0.verify(msg, &self.0)?)
     }
 
     pub fn peer_id(&self) -> PeerId {
-        let hash = keccak256_hash(&self.0);
-        let mhash = multihash::encode(multihash::Hash::Keccak256, &hash)
+        let hash = keccak256_hash(&self.to_bytes().as_ref());
+        let mhash = multihash::encode(multihash::Hash::Keccak256, hash.as_ref())
             .expect("impossible, keccak256 length cannot exceed u32::MAX");
 
         PeerId(mhash)
@@ -147,14 +115,8 @@ impl PeerId {
     }
 }
 
-pub fn keccak256_hash(obj: &[u8]) -> [u8; 32] {
-    use tiny_keccak::Hasher;
+pub fn keccak256_hash(obj: &[u8]) -> HashValue {
+    use ophelia_hasher::Hasher;
 
-    let mut hasher = tiny_keccak::Keccak::v256();
-    let mut output = [0u8; 32];
-
-    hasher.update(obj);
-    hasher.finalize(&mut output);
-
-    output
+    ophelia_hasher_keccak256::Keccak256.digest(obj)
 }
