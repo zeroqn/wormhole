@@ -7,11 +7,21 @@ use futures_codec::{Encoder, Framed, LengthCodec};
 use std::{
     pin::Pin,
     task::{Context, Poll},
+    fmt,
 };
 
 pub struct FramedStream {
     inner: Framed<Box<dyn network::Stream>, LengthCodec>,
     twin: Box<dyn network::Stream>,
+}
+
+impl fmt::Debug for FramedStream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let remote_peer = self.twin.conn().remote_peer();
+        let direction = self.twin.direction();
+
+        write!(f, "{} peer {} stream", remote_peer, direction)
+    }
 }
 
 impl Clone for FramedStream {
