@@ -126,6 +126,10 @@ impl Host for QuicHost {
         self.peer_store.clone()
     }
 
+    fn network(&self) -> Box<dyn Network> {
+        Box::new(self.network.clone())
+    }
+
     async fn add_handler(&self, handler: Box<dyn ProtocolHandler>) -> Result<(), Error> {
         Ok(self.switch.add_handler(handler).await?)
     }

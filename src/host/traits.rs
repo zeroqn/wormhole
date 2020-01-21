@@ -2,7 +2,7 @@ use super::FramedStream;
 use crate::{
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
-    network::{Connectedness, NetworkEvent, Protocol, ProtocolId},
+    network::{Connectedness, Network, NetworkEvent, Protocol, ProtocolId},
 };
 
 use anyhow::Error;
@@ -87,6 +87,8 @@ pub trait Host: Sync + Send + DynClone {
     fn peer_id(&self) -> &PeerId;
 
     fn peer_store(&self) -> crate::peer_store::PeerStore;
+
+    fn network(&self) -> Box<dyn Network>;
 
     async fn add_handler(&self, handler: Box<dyn ProtocolHandler>) -> Result<(), Error>;
 
