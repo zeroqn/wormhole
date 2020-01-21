@@ -1,5 +1,5 @@
 use super::{
-    Connectedness, Dialer, Direction, Network, NetworkConn, NetworkConnPool, NetworkDialer,
+    Conn, Connectedness, Dialer, Direction, Network, NetworkConn, NetworkConnPool, NetworkDialer,
     Protocol, RemoteConnHandler, RemoteStreamHandler, Stream,
 };
 use crate::{
@@ -226,6 +226,26 @@ where
     CH: RemoteConnHandler + 'static + Unpin + Clone,
     SH: RemoteStreamHandler + 'static + Unpin + Clone,
 {
+    async fn dial_peer(&self, ctx: Context, peer_id: &PeerId) -> Result<Box<dyn Conn>, Error> {
+        self.dialer.dial_peer(ctx, peer_id).await
+    }
+
+    async fn close_peer(&self, peer_id: &PeerId) -> Result<(), Error> {
+        self.dialer.close_peer(peer_id).await
+    }
+
+    async fn peers(&self) -> Vec<PeerId> {
+        self.dialer.peers().await
+    }
+
+    async fn conns(&self) -> Vec<Box<dyn Conn>> {
+        self.dialer.conns().await
+    }
+
+    async fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Box<dyn Conn>> {
+        self.dialer.conn_to_peer(peer_id).await
+    }
+
     async fn close(&self) -> Result<(), Error> {
         self.dialer.close().await?;
 

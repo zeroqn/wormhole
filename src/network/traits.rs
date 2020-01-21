@@ -107,6 +107,16 @@ pub trait Dialer {
 
 #[async_trait]
 pub trait Network: Send + Sync + DynClone {
+    async fn dial_peer(&self, ctx: Context, peer_id: &PeerId) -> Result<Box<dyn Conn>, Error>;
+
+    async fn close_peer(&self, peer_id: &PeerId) -> Result<(), Error>;
+
+    async fn peers(&self) -> Vec<PeerId>;
+
+    async fn conns(&self) -> Vec<Box<dyn Conn>>;
+
+    async fn conn_to_peer(&self, peer_id: &PeerId) -> Option<Box<dyn Conn>>;
+
     async fn close(&self) -> Result<(), Error>;
 
     async fn new_stream(
