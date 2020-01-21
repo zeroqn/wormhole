@@ -5,9 +5,9 @@ use futures::Sink;
 use futures_codec::{Encoder, Framed, LengthCodec};
 
 use std::{
+    fmt,
     pin::Pin,
     task::{Context, Poll},
-    fmt,
 };
 
 pub struct FramedStream {
