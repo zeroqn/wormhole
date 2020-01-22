@@ -75,12 +75,32 @@ impl PeerInfo {
         &self.peer_id
     }
 
+    pub fn pubkey(&self) -> Option<&PublicKey> {
+        self.pubkey.as_ref()
+    }
+
     pub fn into_multiaddr(self) -> Option<Multiaddr> {
         self.multiaddrs.into_iter().next()
     }
 
     pub fn set_connectedness(&mut self, connectedness: Connectedness) {
         self.connectedness = connectedness;
+    }
+
+    pub fn set_pubkey(&mut self, pubkey: PublicKey) -> Result<(), Error> {
+        use PeerStoreError::*;
+
+        if pubkey.peer_id() != self.peer_id {
+            Err(PeerIdNotMatchPubKey {
+                peer_id: self.peer_id.clone(),
+                pubkey: pubkey,
+            }
+            .into())
+        } else {
+            self.pubkey = Some(pubkey);
+
+            Ok(())
+        }
     }
 }
 
