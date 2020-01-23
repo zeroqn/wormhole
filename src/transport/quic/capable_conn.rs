@@ -53,6 +53,7 @@ pub struct QuicConn {
     transport: QuicTransport,
 
     local_pubkey: PublicKey,
+    local_multiaddr: Multiaddr,
 
     remote_peer_id: PeerId,
     remote_pubkey: PublicKey,
@@ -66,6 +67,7 @@ impl QuicConn {
         is_closed: Arc<AtomicBool>,
         transport: QuicTransport,
         local_pubkey: PublicKey,
+        local_multiaddr: Multiaddr,
         remote_pubkey: PublicKey,
         remote_multiaddr: Multiaddr,
     ) -> Self {
@@ -76,6 +78,7 @@ impl QuicConn {
             transport,
 
             local_pubkey,
+            local_multiaddr,
 
             remote_peer_id: remote_pubkey.peer_id(),
             remote_pubkey,
@@ -100,9 +103,7 @@ impl ConnSecurity for QuicConn {
 
 impl ConnMultiaddr for QuicConn {
     fn local_multiaddr(&self) -> Multiaddr {
-        self.transport
-            .local_multiaddr()
-            .expect("impossible, got connection without listen")
+        self.local_multiaddr.clone()
     }
 
     fn remote_multiaddr(&self) -> Multiaddr {

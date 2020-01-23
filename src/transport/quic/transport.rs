@@ -38,7 +38,7 @@ pub struct QuicTransport {
     endpoint: Arc<Mutex<Option<Endpoint>>>,
 
     local_pubkey: PublicKey,
-    local_multiaddr: Option<Multiaddr>,
+    local_multiaddr: Arc<Mutex<Option<Multiaddr>>>,
 }
 
 impl QuicTransport {
@@ -56,7 +56,7 @@ impl QuicTransport {
             endpoint: Arc::new(Mutex::new(None)),
 
             local_pubkey: host_pubkey,
-            local_multiaddr: None,
+            local_multiaddr: Arc::new(Mutex::new(None)),
         };
 
         Ok(transport)
@@ -122,12 +122,21 @@ impl Transport for QuicTransport {
             is_closed_by_driver.store(true, Ordering::SeqCst);
         });
 
+        let local_multiaddr = {
+            self.local_multiaddr
+                .lock()
+                .await
+                .clone()
+                .expect("impossible, no listen")
+        };
+
         let boxed_conn: Box<dyn CapableConn> = Box::new(QuicConn::new(
             connection,
             bi_streams,
             is_closed,
             self.clone(),
             self.local_pubkey.clone(),
+            local_multiaddr,
             peer_pubkey,
             raddr,
         ));
@@ -158,20 +167,23 @@ impl Transport for QuicTransport {
             self.endpoint.lock().await.replace(endpoint);
         }
 
-        self.local_multiaddr = Some(laddr.clone());
+        {
+            self.local_multiaddr.lock().await.replace(laddr.clone());
+        }
 
         debug!("listen on {}", laddr);
 
         let boxed_listener: Box<dyn Listener> = Box::new(QuicListener::new(
             incoming,
             self.local_pubkey.clone(),
+            laddr,
             self.clone(),
         ));
 
         Ok(boxed_listener)
     }
 
-    fn local_multiaddr(&self) -> Option<Multiaddr> {
-        self.local_multiaddr.clone()
+    async fn local_multiaddr(&self) -> Option<Multiaddr> {
+        self.local_multiaddr.lock().await.clone()
     }
 }

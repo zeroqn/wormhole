@@ -170,13 +170,13 @@ pub trait Transport: Sync + Send + DynClone {
 
     async fn listen(&mut self, laddr: Multiaddr) -> Result<Box<dyn Listener>, Error>;
 
-    fn local_multiaddr(&self) -> Option<Multiaddr>;
+    async fn local_multiaddr(&self) -> Option<Multiaddr>;
 }
 
 #[async_trait]
 impl<T> Transport for T
 where
-    T: DerefMut<Target = dyn Transport> + Sync + Send + DynClone,
+    T: DerefMut<Target = dyn Transport + Send> + Sync + Send + DynClone,
 {
     async fn dial(
         &self,
@@ -195,8 +195,8 @@ where
         self.deref_mut().listen(laddr).await
     }
 
-    fn local_multiaddr(&self) -> Option<Multiaddr> {
-        self.deref().local_multiaddr()
+    async fn local_multiaddr(&self) -> Option<Multiaddr> {
+        self.deref().local_multiaddr().await
     }
 }
 

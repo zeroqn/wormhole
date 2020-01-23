@@ -1,4 +1,4 @@
-use super::super::traits::{CapableConn, Listener, Transport};
+use super::super::traits::{CapableConn, Listener};
 use super::{QuicConn, QuicTransport, QuinnConnectionExt};
 use crate::{
     crypto::PublicKey,
@@ -28,14 +28,21 @@ pub enum ListenerError {
 pub struct QuicListener {
     incoming: Option<Incoming>,
     pubkey: PublicKey,
+    multiaddr: Multiaddr,
     transport: QuicTransport,
 }
 
 impl QuicListener {
-    pub fn new(incoming: Incoming, local_pubkey: PublicKey, transport: QuicTransport) -> Self {
+    pub fn new(
+        incoming: Incoming,
+        local_pubkey: PublicKey,
+        local_multiaddr: Multiaddr,
+        transport: QuicTransport,
+    ) -> Self {
         QuicListener {
             incoming: Some(incoming),
             pubkey: local_pubkey,
+            multiaddr: local_multiaddr,
             transport,
         }
     }
@@ -90,6 +97,7 @@ impl Listener for QuicListener {
             is_closed,
             self.transport.clone(),
             self.pubkey.clone(),
+            self.multiaddr.clone(),
             remote_pubkey,
             remote_multiaddr,
         );
@@ -98,25 +106,17 @@ impl Listener for QuicListener {
     }
 
     fn close(&mut self) -> Result<(), Error> {
-        debug!(
-            "close transprt listener {:?}",
-            self.transport.local_multiaddr()
-        );
+        debug!("close transprt listener {:?}", self.multiaddr);
         drop(self.incoming.take());
 
         Ok(())
     }
 
     fn addr(&self) -> SocketAddr {
-        self.transport
-            .local_multiaddr()
-            .expect("impossible, no multiaddr after listen")
-            .to_socket_addr()
+        self.multiaddr.to_socket_addr()
     }
 
     fn multiaddr(&self) -> Multiaddr {
-        self.transport
-            .local_multiaddr()
-            .expect("impossible, no multiaddr after listen")
+        self.multiaddr.clone()
     }
 }
