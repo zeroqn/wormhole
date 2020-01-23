@@ -75,8 +75,6 @@ struct Peers {
 #[derive(Clone)]
 pub struct BootstrapProtocol {
     proto_id: ProtocolId,
-    peer_id: PeerId,
-    local_multiaddr: Multiaddr,
 
     mode: Mode,
 
@@ -87,16 +85,12 @@ pub struct BootstrapProtocol {
 impl BootstrapProtocol {
     pub fn new(
         proto_id: ProtocolId,
-        peer_id: PeerId,
-        local_multiaddr: Multiaddr,
         mode: Mode,
         peer_store: PeerStore,
         evt_tx: Sender<Event>,
     ) -> Self {
         BootstrapProtocol {
             proto_id,
-            peer_id,
-            local_multiaddr,
 
             mode,
 
@@ -255,17 +249,13 @@ impl ProtocolHandler for BootstrapProtocol {
                 });
             }
             (Mode::Subscriber, Direction::Outbound) => {
-                let peer_id = self.peer_id.clone();
-                let local_multiaddr = self.local_multiaddr.clone();
+                let our_id = w_stream.conn().local_peer();
+                let our_multiaddr = w_stream.conn().local_multiaddr();
 
                 tokio::spawn(async move {
-                    if let Err(err) = Self::publish_ourself(
-                        Context::new(),
-                        peer_id,
-                        local_multiaddr,
-                        &mut w_stream,
-                    )
-                    .await
+                    if let Err(err) =
+                        Self::publish_ourself(Context::new(), our_id, our_multiaddr, &mut w_stream)
+                            .await
                     {
                         error!("publish ourself {}", err);
                     }
@@ -280,6 +270,7 @@ impl ProtocolHandler for BootstrapProtocol {
         }
 
         if !stream_reset {
+            let our_id = stream.conn().local_peer();
             let mut r_stream = stream;
             let mut evt_tx = self.evt_tx.clone();
 
@@ -288,7 +279,7 @@ impl ProtocolHandler for BootstrapProtocol {
                     Self::new_arrived(Context::new(), &self.peer_store, &mut r_stream, &mut evt_tx)
                         .await
                 {
-                    error!("{} new arrived: {}", self.peer_id, err);
+                    error!("{} new arrived: {}", our_id, err);
                     break;
                 }
             }

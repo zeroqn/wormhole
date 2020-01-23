@@ -251,8 +251,6 @@ async fn run_client(
     };
     let bt_proto = BootstrapProtocol::new(
         BOOTSTRAP_PROTO_ID.into(),
-        our.peer_id.clone(),
-        our.multiaddr.clone(),
         bt_mode,
         peer_store.clone(),
         bt_evt_tx,

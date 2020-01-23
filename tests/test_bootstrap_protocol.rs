@@ -87,8 +87,6 @@ async fn make_xenovox<A: ToSocketAddrs>(
     // TieDing
     let bt_x_proto = BootstrapProtocol::new(
         BOOTSTRAP_PROTO_ID.into(),
-        pk.peer_id(),
-        multiaddr.clone(),
         bt_mode,
         peer_store.clone(),
         bt_evt_tx,
