@@ -248,7 +248,7 @@ impl ProtocolHandler for BootstrapProtocol {
                     }
                 });
             }
-            (Mode::Subscriber, Direction::Outbound) => {
+            (Mode::Publisher, Direction::Outbound) | (Mode::Subscriber, Direction::Outbound) => {
                 let our_id = w_stream.conn().local_peer();
                 let our_multiaddr = w_stream.conn().local_multiaddr();
 
