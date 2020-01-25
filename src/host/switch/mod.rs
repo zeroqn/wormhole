@@ -8,7 +8,7 @@ use anyhow::{Context, Error};
 use async_trait::async_trait;
 use bytes::BytesMut;
 use futures::{lock::Mutex, stream::TryStreamExt, SinkExt};
-use tracing::{debug, trace_span};
+use tracing::{debug, trace_span, warn};
 
 use std::{
     borrow::Borrow,
@@ -80,28 +80,10 @@ impl Default for DefaultSwitch {
     }
 }
 
-#[async_trait]
-impl Switch for DefaultSwitch {
-    async fn add_handler(&self, handler: Box<dyn ProtocolHandler>) -> Result<(), Error> {
-        let proto = Protocol::new(*handler.proto_id(), handler.proto_name());
-        debug!("add protocol {} handler", proto);
-
-        let reg_proto = RegisteredProtocol {
-            inner: proto,
-            r#match: None,
-            handler,
-        };
-
-        {
-            self.register.lock().await.insert(reg_proto)
-        };
-
-        Ok(())
-    }
-
-    async fn add_match_handler(
+impl DefaultSwitch {
+    async fn register_handler(
         &self,
-        r#match: Box<dyn MatchProtocol>,
+        r#match: Option<Box<dyn MatchProtocol>>,
         handler: Box<dyn ProtocolHandler>,
     ) -> Result<(), Error> {
         let proto = Protocol::new(*handler.proto_id(), handler.proto_name());
@@ -109,15 +91,37 @@ impl Switch for DefaultSwitch {
 
         let reg_proto = RegisteredProtocol {
             inner: proto,
-            r#match: Some(r#match),
+            r#match,
             handler,
         };
 
         {
-            self.register.lock().await.insert(reg_proto)
-        };
+            let mut register = self.register.lock().await;
+
+            if register.contains(&reg_proto) {
+                let replaced = register.replace(reg_proto).map(|p| p.inner);
+                warn!("replace protocol {:?} handler", replaced);
+            } else {
+                register.insert(reg_proto);
+            }
+        }
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Switch for DefaultSwitch {
+    async fn add_handler(&self, handler: Box<dyn ProtocolHandler>) -> Result<(), Error> {
+        Ok(self.register_handler(None, handler).await?)
+    }
+
+    async fn add_match_handler(
+        &self,
+        r#match: Box<dyn MatchProtocol>,
+        handler: Box<dyn ProtocolHandler>,
+    ) -> Result<(), Error> {
+        Ok(self.register_handler(Some(r#match), handler).await?)
     }
 
     async fn remove_handler(&self, proto_id: ProtocolId) {
