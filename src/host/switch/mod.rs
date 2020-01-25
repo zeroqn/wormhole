@@ -104,6 +104,8 @@ impl DefaultSwitch {
             } else {
                 register.insert(reg_proto);
             }
+
+            debug!("registered {} protocols", register.len());
         }
 
         Ok(())
