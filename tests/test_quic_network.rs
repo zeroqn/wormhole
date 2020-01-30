@@ -14,7 +14,7 @@ use wormhole::{
         Conn, Connectedness, Network, Protocol, QuicNetwork, RemoteConnHandler,
         RemoteStreamHandler, Stream,
     },
-    peer_store::{PeerInfo, PeerStore},
+    peer_store::simple_store::{PeerInfo, SimplePeerStore},
 };
 
 use std::net::ToSocketAddrs;
@@ -46,7 +46,7 @@ impl RemoteStreamHandler for EchoStreamHandler {
 
 pub async fn make_xenovox<A: ToSocketAddrs>(
     addr: A,
-    peer_store: PeerStore,
+    peer_store: SimplePeerStore,
 ) -> Result<
     (
         QuicNetwork<NoopConnHandler, EchoStreamHandler>,
@@ -80,7 +80,7 @@ async fn test_quic_network_with_remote_peer() -> Result<(), Error> {
             .finish(),
     )?;
 
-    let peer_store = PeerStore::default();
+    let peer_store = SimplePeerStore::default();
     let proto = Protocol::new(1, "drama");
 
     let msg = "watch 20-12-2019";

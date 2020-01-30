@@ -94,7 +94,7 @@ pub trait Dialer {
 
     async fn close_peer(&self, peer_id: &PeerId) -> Result<(), Error>;
 
-    fn peer_store(&self) -> PeerStore;
+    fn peer_store(&self) -> Box<dyn PeerStore>;
 
     async fn connectedness(&self, peer_id: &PeerId) -> Connectedness;
 

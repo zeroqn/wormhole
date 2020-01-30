@@ -17,7 +17,7 @@ use wormhole::{
     host::{FramedStream, Host, ProtocolHandler, QuicHost},
     multiaddr::{Multiaddr, MultiaddrExt},
     network::{Connectedness, Protocol, ProtocolId},
-    peer_store::{PeerInfo, PeerStore},
+    peer_store::simple_store::{PeerInfo, SimplePeerStore},
 };
 
 use std::net::ToSocketAddrs;
@@ -60,7 +60,7 @@ impl ProtocolHandler for EchoProtocol {
 
 async fn make_xenovox<A: ToSocketAddrs>(
     addr: A,
-    peer_store: PeerStore,
+    peer_store: SimplePeerStore,
     bt_mode: bootstrap::Mode,
 ) -> Result<
     (
@@ -112,9 +112,9 @@ async fn test_bootstrap_protocol() -> Result<(), Error> {
             .finish(),
     )?;
 
-    let geralt_store = PeerStore::default();
-    let ciri_store = PeerStore::default();
-    let yene_store = PeerStore::default();
+    let geralt_store = SimplePeerStore::default();
+    let ciri_store = SimplePeerStore::default();
+    let yene_store = SimplePeerStore::default();
     let msg = "watch 20-12-2019";
 
     let (_geralt_xenovox, geralt_pubkey, geralt_maddr, .., _geralt_bt_evt_rx) =

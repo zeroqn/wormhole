@@ -5,7 +5,7 @@ use super::{
 use crate::{
     crypto::{PeerId, PrivateKey},
     multiaddr::Multiaddr,
-    peer_store::{PeerInfo, PeerStore},
+    peer_store::PeerStore,
     transport::{ConnMultiaddr, ConnSecurity},
     transport::{Listener, QuicTransport, Transport},
 };
@@ -31,7 +31,7 @@ pub enum NetworkError {
 
 struct QuicListenerDriver<ConnHandler, StreamHandler> {
     listener: Box<dyn Listener>,
-    peer_store: PeerStore,
+    peer_store: Box<dyn PeerStore>,
     conn_pool: NetworkConnPool,
 
     conn_handler: ConnHandler,
@@ -108,7 +108,7 @@ where
 
     async fn drive_conn(
         conn: NetworkConn,
-        peer_store: PeerStore,
+        peer_store: impl PeerStore,
         conn_pool: NetworkConnPool,
         conn_handler: CH,
         stream_handler: SH,
@@ -116,17 +116,19 @@ where
         let peer_id = conn.remote_peer();
         let peer_maddr = conn.remote_multiaddr();
 
-        if !peer_store.contains(&peer_id).await {
+        if peer_store.get_pubkey(&peer_id).await.is_none() {
             let pubkey = conn.remote_public_key();
 
-            let peer_info = PeerInfo::with_all(pubkey, Connectedness::Connected, peer_maddr);
-
-            peer_store.register(peer_info).await;
+            peer_store.set_pubkey(&peer_id, pubkey).await;
+            peer_store.add_multiaddr(&peer_id, peer_maddr).await;
+            peer_store
+                .set_connectedness(&peer_id, Connectedness::Connected)
+                .await;
         } else {
             peer_store
                 .set_connectedness(&peer_id, Connectedness::Connected)
                 .await;
-            peer_store.set_multiaddr(&peer_id, peer_maddr).await;
+            peer_store.add_multiaddr(&peer_id, peer_maddr).await;
         }
 
         conn_pool.insert(peer_id.clone(), conn.clone()).await;
@@ -179,7 +181,7 @@ impl QuicListenerDriverRef {
 #[derive(Clone)]
 pub struct QuicNetwork<ConnHandler, StreamHandler> {
     dialer: NetworkDialer,
-    peer_store: PeerStore,
+    peer_store: Box<dyn PeerStore>,
     conn_pool: NetworkConnPool,
     transport: QuicTransport,
     listener_driver_ref: Arc<Mutex<Option<QuicListenerDriverRef>>>,
@@ -194,12 +196,13 @@ where
 {
     pub fn make(
         host_privkey: &PrivateKey,
-        peer_store: PeerStore,
+        peer_store: impl PeerStore + 'static,
         conn_handler: CH,
         stream_handler: SH,
     ) -> Result<Self, Error> {
         let transport = QuicTransport::make(host_privkey)?;
         let conn_pool = NetworkConnPool::default();
+        let peer_store: Box<dyn PeerStore> = Box::new(peer_store);
         let dialer = NetworkDialer::new(peer_store.clone(), conn_pool.clone(), transport.clone());
 
         Ok(QuicNetwork {

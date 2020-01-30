@@ -14,18 +14,19 @@ pub enum DialerError {
 
 #[derive(Clone)]
 pub struct NetworkDialer {
-    peer_store: PeerStore,
+    peer_store: Box<dyn PeerStore>,
     conn_pool: NetworkConnPool,
     transport: Box<dyn Transport>,
 }
 
 impl NetworkDialer {
     pub(crate) fn new(
-        peer_store: PeerStore,
+        peer_store: impl PeerStore + 'static,
         conn_pool: NetworkConnPool,
         transport: impl Transport + 'static,
     ) -> Self {
         let transport: Box<dyn Transport> = Box::new(transport);
+        let peer_store: Box<dyn PeerStore> = Box::new(peer_store);
 
         NetworkDialer {
             peer_store,
@@ -54,7 +55,7 @@ impl NetworkDialer {
 
     async fn close_peer_conn(
         peer_conn: (PeerId, Box<dyn Conn>),
-        peer_store: PeerStore,
+        peer_store: impl PeerStore,
     ) -> Result<(), Error> {
         let (peer_id, conn) = peer_conn;
 
@@ -113,7 +114,7 @@ impl Dialer for NetworkDialer {
         Ok(())
     }
 
-    fn peer_store(&self) -> PeerStore {
+    fn peer_store(&self) -> Box<dyn PeerStore> {
         self.peer_store.clone()
     }
 

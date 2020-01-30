@@ -13,7 +13,7 @@ use wormhole::{
     host::{FramedStream, Host, ProtocolHandler, QuicHost},
     multiaddr::{Multiaddr, MultiaddrExt},
     network::{Connectedness, Protocol, ProtocolId},
-    peer_store::{PeerInfo, PeerStore},
+    peer_store::simple_store::{PeerInfo, SimplePeerStore},
 };
 
 use std::net::ToSocketAddrs;
@@ -53,7 +53,7 @@ impl ProtocolHandler for EchoProtocol {
 
 async fn make_xenovox<A: ToSocketAddrs>(
     addr: A,
-    peer_store: PeerStore,
+    peer_store: SimplePeerStore,
 ) -> Result<(QuicHost, PublicKey), Error> {
     let (sk, pk) = random_keypair();
 
@@ -79,7 +79,7 @@ async fn test_default_host() -> Result<(), Error> {
             .finish(),
     )?;
 
-    let peer_store = PeerStore::default();
+    let peer_store = SimplePeerStore::default();
     let msg = "watch 20-12-2019";
 
     let (_geralt_xenovox, geralt_pubkey) =

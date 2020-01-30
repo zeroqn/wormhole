@@ -57,16 +57,20 @@ pub type DefaultNetwork = QuicNetwork<(), DefaultStreamHandler>;
 pub struct QuicHost {
     network: DefaultNetwork,
     switch: Arc<DefaultSwitch>,
-    peer_store: PeerStore,
+    peer_store: Box<dyn PeerStore>,
 
     _pubkey: PublicKey,
     peer_id: PeerId,
 }
 
 impl QuicHost {
-    pub fn make(host_privkey: &PrivateKey, peer_store: PeerStore) -> Result<Self, Error> {
+    pub fn make(
+        host_privkey: &PrivateKey,
+        peer_store: impl PeerStore + 'static,
+    ) -> Result<Self, Error> {
         let switch = Arc::new(DefaultSwitch::default());
         let stream_handler = DefaultStreamHandler::new(Arc::clone(&switch));
+        let peer_store: Box<dyn PeerStore> = Box::new(peer_store);
 
         let network = QuicNetwork::make(host_privkey, peer_store.clone(), (), stream_handler)?;
 
@@ -122,7 +126,7 @@ impl Host for QuicHost {
         &self.peer_id
     }
 
-    fn peer_store(&self) -> PeerStore {
+    fn peer_store(&self) -> Box<dyn PeerStore> {
         self.peer_store.clone()
     }
 
@@ -155,7 +159,7 @@ impl Host for QuicHost {
     ) -> Result<(), Error> {
         if let Some(raddr) = raddr {
             self.peer_store
-                .set_multiaddr(peer_id, raddr.to_owned())
+                .add_multiaddr(peer_id, raddr.to_owned())
                 .await;
         }
 

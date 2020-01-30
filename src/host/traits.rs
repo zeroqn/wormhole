@@ -1,8 +1,9 @@
 use super::FramedStream;
 use crate::{
-    crypto::{PeerId, PublicKey},
+    crypto::PeerId,
     multiaddr::Multiaddr,
-    network::{Connectedness, Network, NetworkEvent, Protocol, ProtocolId},
+    network::{Network, NetworkEvent, Protocol, ProtocolId},
+    peer_store::PeerStore,
 };
 
 use anyhow::Error;
@@ -11,8 +12,6 @@ use creep::Context;
 use dyn_clone::DynClone;
 use futures::channel::mpsc;
 use tracing::{debug, error};
-
-use std::collections::HashSet;
 
 pub trait MatchProtocol: Send + DynClone {
     fn r#match<'a>(&self, name: &'a str) -> bool;
@@ -66,27 +65,10 @@ pub trait Switch: Sync + Send + DynClone {
 dyn_clone::clone_trait_object!(Switch);
 
 #[async_trait]
-pub trait PeerStore: Sync + Send + DynClone {
-    async fn get_pubkey(&self, peer_id: &PeerId) -> Option<PublicKey>;
-
-    async fn set_pubkey(&self, peer_id: PeerId, pubkey: PublicKey);
-
-    async fn get_connectedness(&self, peer_id: &PeerId) -> Connectedness;
-
-    async fn set_connectedness(&self, peer_id: PeerId, connectedness: Connectedness);
-
-    async fn get_multiaddrs(&self, peer_id: &PeerId) -> Option<HashSet<Multiaddr>>;
-
-    async fn add_multiaddr(&self, peer_id: PeerId, addr: Multiaddr);
-}
-
-dyn_clone::clone_trait_object!(PeerStore);
-
-#[async_trait]
 pub trait Host: Sync + Send + DynClone {
     fn peer_id(&self) -> &PeerId;
 
-    fn peer_store(&self) -> crate::peer_store::PeerStore;
+    fn peer_store(&self) -> Box<dyn PeerStore>;
 
     fn network(&self) -> Box<dyn Network>;
 

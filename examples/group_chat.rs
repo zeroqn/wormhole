@@ -14,7 +14,10 @@ use wormhole::{
     host::{FramedStream, Host, ProtocolHandler, QuicHost},
     multiaddr::{Multiaddr, MultiaddrExt},
     network::{Connectedness, Protocol, ProtocolId},
-    peer_store::{PeerInfo, PeerStore},
+    peer_store::{
+        simple_store::{PeerInfo, SimplePeerStore},
+        PeerStore,
+    },
 };
 
 use std::net::SocketAddr;
@@ -226,7 +229,7 @@ async fn run_client(
 ) -> AnyResult<()> {
     debug!("our peer id {}", our.peer_id);
 
-    let peer_store = PeerStore::default();
+    let peer_store = SimplePeerStore::default();
     peer_store
         .register(our.to_info(Connectedness::Connected))
         .await;

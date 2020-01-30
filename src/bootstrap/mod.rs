@@ -3,7 +3,10 @@ use crate::{
     host::{FramedStream, ProtocolHandler},
     multiaddr::Multiaddr,
     network::{Connectedness, Direction, Protocol, ProtocolId},
-    peer_store::{self, PeerStore},
+    peer_store::{
+        simple_store::{self, SimplePeerStore},
+        PeerStore,
+    },
 };
 
 use anyhow::{Context as ErrorContext, Error};
@@ -57,11 +60,11 @@ impl PeerInfo {
         }
     }
 
-    pub fn into_store_info(self) -> Result<peer_store::PeerInfo, Error> {
+    pub fn into_store_info(self) -> Result<simple_store::PeerInfo, Error> {
         let peer_id = PeerId::from_bytes(self.peer_id).context("decode peer id")?;
         let multiaddr = Multiaddr::try_from(self.multiaddr).context("decode multiaddr")?;
 
-        Ok(peer_store::PeerInfo::with_addr(peer_id, multiaddr))
+        Ok(simple_store::PeerInfo::with_addr(peer_id, multiaddr))
     }
 }
 
@@ -78,7 +81,7 @@ pub struct BootstrapProtocol {
 
     mode: Mode,
 
-    peer_store: PeerStore,
+    peer_store: SimplePeerStore,
     evt_tx: Sender<Event>,
 }
 
@@ -86,7 +89,7 @@ impl BootstrapProtocol {
     pub fn new(
         proto_id: ProtocolId,
         mode: Mode,
-        peer_store: PeerStore,
+        peer_store: SimplePeerStore,
         evt_tx: Sender<Event>,
     ) -> Self {
         BootstrapProtocol {
@@ -135,7 +138,7 @@ impl BootstrapProtocol {
 
     pub async fn publish_peers(
         _ctx: Context,
-        peer_store: &PeerStore,
+        peer_store: &SimplePeerStore,
         w_stream: &mut FramedStream,
     ) -> Result<(), Error> {
         let peer_infos = peer_store
@@ -162,7 +165,7 @@ impl BootstrapProtocol {
     // TODO: set interval through ctx
     pub async fn interval_publish_peers(
         ctx: Context,
-        peer_store: &PeerStore,
+        peer_store: &SimplePeerStore,
         w_stream: &mut FramedStream,
     ) -> Result<(), Error> {
         loop {
@@ -177,7 +180,7 @@ impl BootstrapProtocol {
 
     pub async fn new_arrived(
         _ctx: Context,
-        peer_store: &PeerStore,
+        peer_store: &SimplePeerStore,
         r_stream: &mut FramedStream,
         evt_tx: &mut Sender<Event>,
     ) -> Result<(), Error> {
@@ -205,7 +208,7 @@ impl BootstrapProtocol {
             } else {
                 let peer_id = peer_info.peer_id().to_owned();
                 if let Some(multiaddr) = peer_info.into_multiaddr() {
-                    peer_store.set_multiaddr(&peer_id, multiaddr).await
+                    peer_store.add_multiaddr(&peer_id, multiaddr).await
                 }
             }
         }
