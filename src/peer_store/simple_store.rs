@@ -95,7 +95,7 @@ impl PeerInfo {
         if pubkey.peer_id() != self.peer_id {
             Err(PeerIdNotMatchPubKey {
                 peer_id: self.peer_id.clone(),
-                pubkey: pubkey,
+                pubkey,
             }
             .into())
         } else {
@@ -206,12 +206,12 @@ impl PeerStore for SimplePeerStore {
         }
     }
 
-    async fn get_multiaddrs(&self, peer_id: &PeerId) -> Option<HashSet<Multiaddr>> {
+    async fn get_multiaddrs(&self, peer_id: &PeerId) -> Option<Vec<Multiaddr>> {
         self.book
             .lock()
             .await
             .get(peer_id)
-            .map(|pi| pi.multiaddrs.clone())
+            .map(|pi| pi.multiaddrs.iter().cloned().collect())
     }
 
     // TODO: check peer id in multiaddr match given peer id.

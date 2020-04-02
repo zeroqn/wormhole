@@ -7,7 +7,7 @@ use crate::{
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 
-use std::{collections::HashSet, ops::Deref};
+use std::ops::Deref;
 
 #[async_trait]
 pub trait PeerStore: Sync + Send + DynClone {
@@ -19,7 +19,7 @@ pub trait PeerStore: Sync + Send + DynClone {
 
     async fn set_connectedness(&self, peer_id: &PeerId, connectedness: Connectedness);
 
-    async fn get_multiaddrs(&self, peer_id: &PeerId) -> Option<HashSet<Multiaddr>>;
+    async fn get_multiaddrs(&self, peer_id: &PeerId) -> Option<Vec<Multiaddr>>;
 
     async fn add_multiaddr(&self, peer_id: &PeerId, addr: Multiaddr);
 }
@@ -47,7 +47,7 @@ where
         self.deref().set_connectedness(peer_id, connectedness).await
     }
 
-    async fn get_multiaddrs(&self, peer_id: &PeerId) -> Option<HashSet<Multiaddr>> {
+    async fn get_multiaddrs(&self, peer_id: &PeerId) -> Option<Vec<Multiaddr>> {
         self.deref().get_multiaddrs(peer_id).await
     }
 
