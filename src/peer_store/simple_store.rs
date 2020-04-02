@@ -1,5 +1,6 @@
 use super::PeerStore;
 use crate::{
+    bootstrap::BootstrapPeerStore,
     crypto::{PeerId, PublicKey},
     multiaddr::Multiaddr,
     network::Connectedness,
@@ -225,5 +226,23 @@ impl PeerStore for SimplePeerStore {
         } else {
             book.insert(PeerInfo::with_addr(peer_id.to_owned(), addr));
         }
+    }
+}
+
+#[async_trait]
+impl BootstrapPeerStore for SimplePeerStore {
+    async fn register(&self, peers: Vec<(PeerId, Multiaddr)>) {
+        for (peer_id, multiaddr) in peers.into_iter() {
+            let info = PeerInfo::with_addr(peer_id, multiaddr);
+            self.register(info).await
+        }
+    }
+
+    async fn contains(&self, peer_id: &PeerId) -> bool {
+        self.contains(peer_id).await
+    }
+
+    async fn choose(&self, max: usize) -> Vec<(PeerId, Multiaddr)> {
+        self.choose(max).await
     }
 }

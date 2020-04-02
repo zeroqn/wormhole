@@ -2,11 +2,8 @@ use crate::{
     crypto::PeerId,
     host::{FramedStream, ProtocolHandler},
     multiaddr::Multiaddr,
-    network::{Connectedness, Direction, Protocol, ProtocolId},
-    peer_store::{
-        simple_store::{self, SimplePeerStore},
-        PeerStore,
-    },
+    network::{Direction, Protocol, ProtocolId},
+    peer_store::PeerStore,
 };
 
 use anyhow::{Context as ErrorContext, Error};
@@ -14,15 +11,43 @@ use async_trait::async_trait;
 use bytes::BytesMut;
 use creep::Context;
 use derive_more::Display;
+use dyn_clone::DynClone;
 use futures::{channel::mpsc::Sender, SinkExt, TryStreamExt};
 use prost::Message;
 use tokio::time::delay_for;
 use tracing::{debug, error};
 
-use std::{convert::TryFrom, time::Duration};
+use std::{convert::TryFrom, ops::Deref, time::Duration};
 
 /// Protocol name, version appended
 const PROTO_NAME: &str = "/bootstrap/1.0";
+
+#[async_trait]
+pub trait BootstrapPeerStore: PeerStore {
+    async fn register(&self, peers: Vec<(PeerId, Multiaddr)>);
+    async fn contains(&self, peer_id: &PeerId) -> bool;
+    async fn choose(&self, max: usize) -> Vec<(PeerId, Multiaddr)>;
+}
+
+dyn_clone::clone_trait_object!(BootstrapPeerStore);
+
+#[async_trait]
+impl<S> BootstrapPeerStore for S
+where
+    S: Deref<Target = dyn BootstrapPeerStore> + DynClone + Send + Sync + PeerStore,
+{
+    async fn register(&self, peers: Vec<(PeerId, Multiaddr)>) {
+        self.deref().register(peers).await
+    }
+
+    async fn contains(&self, peer_id: &PeerId) -> bool {
+        self.deref().contains(peer_id).await
+    }
+
+    async fn choose(&self, max: usize) -> Vec<(PeerId, Multiaddr)> {
+        self.deref().choose(max).await
+    }
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum BootstrapError {
@@ -60,16 +85,16 @@ impl PeerInfo {
         }
     }
 
-    pub fn into_store_info(self) -> Result<simple_store::PeerInfo, Error> {
+    pub fn into_pair(self) -> Result<(PeerId, Multiaddr), Error> {
         let peer_id = PeerId::from_bytes(self.peer_id).context("decode peer id")?;
         let multiaddr = Multiaddr::try_from(self.multiaddr).context("decode multiaddr")?;
 
-        Ok(simple_store::PeerInfo::with_addr(peer_id, multiaddr))
+        Ok((peer_id, multiaddr))
     }
 }
 
 #[derive(Message)]
-struct Peers {
+struct DiscoverPeers {
     #[prost(message, repeated, tag = "1")]
     data: Vec<PeerInfo>,
 }
@@ -81,7 +106,7 @@ pub struct BootstrapProtocol {
 
     mode: Mode,
 
-    peer_store: SimplePeerStore,
+    peer_store: Box<dyn BootstrapPeerStore>,
     evt_tx: Sender<Event>,
 }
 
@@ -89,7 +114,7 @@ impl BootstrapProtocol {
     pub fn new(
         proto_id: ProtocolId,
         mode: Mode,
-        peer_store: SimplePeerStore,
+        peer_store: impl BootstrapPeerStore + 'static,
         evt_tx: Sender<Event>,
     ) -> Self {
         BootstrapProtocol {
@@ -97,7 +122,7 @@ impl BootstrapProtocol {
 
             mode,
 
-            peer_store,
+            peer_store: Box::new(peer_store),
             evt_tx,
         }
     }
@@ -118,7 +143,7 @@ impl BootstrapProtocol {
         let our_info = PeerInfo::new((peer_id, local_multiaddr));
 
         let encoded_ourself = {
-            let ourself = Peers {
+            let ourself = DiscoverPeers {
                 data: vec![our_info],
             };
             let mut encoded_ourself = BytesMut::new();
@@ -138,10 +163,11 @@ impl BootstrapProtocol {
 
     pub async fn publish_peers(
         _ctx: Context,
-        peer_store: &SimplePeerStore,
+        peer_store: &dyn BootstrapPeerStore,
         w_stream: &mut FramedStream,
     ) -> Result<(), Error> {
         let peer_infos = peer_store
+            .deref()
             .choose(40)
             .await
             .into_iter()
@@ -149,7 +175,7 @@ impl BootstrapProtocol {
             .collect();
 
         let encoded_peers = {
-            let peers = Peers { data: peer_infos };
+            let peers = DiscoverPeers { data: peer_infos };
             let mut encoded_peers = BytesMut::new();
             peers
                 .encode(&mut encoded_peers)
@@ -165,11 +191,11 @@ impl BootstrapProtocol {
     // TODO: set interval through ctx
     pub async fn interval_publish_peers(
         ctx: Context,
-        peer_store: &SimplePeerStore,
+        peer_store: Box<dyn BootstrapPeerStore>,
         w_stream: &mut FramedStream,
     ) -> Result<(), Error> {
         loop {
-            Self::publish_peers(ctx.clone(), peer_store, w_stream).await?;
+            Self::publish_peers(ctx.clone(), peer_store.deref(), w_stream).await?;
 
             for _ in 0..20 {
                 // TODO: better shutdown check
@@ -180,7 +206,7 @@ impl BootstrapProtocol {
 
     pub async fn new_arrived(
         _ctx: Context,
-        peer_store: &SimplePeerStore,
+        peer_store: &dyn BootstrapPeerStore,
         r_stream: &mut FramedStream,
         evt_tx: &mut Sender<Event>,
     ) -> Result<(), Error> {
@@ -189,29 +215,17 @@ impl BootstrapProtocol {
             .await?
             .ok_or(BootstrapError::NoNewArrive)?;
 
-        let decoded_peers: Peers =
+        let discover_peers: DiscoverPeers =
             prost::Message::decode(encoded_peers).context("decode new arrived peers")?;
-        let store_peer_infos = decoded_peers
+
+        let peer_pairs = discover_peers
             .data
             .into_iter()
-            .map(PeerInfo::into_store_info)
+            .map(PeerInfo::into_pair)
             .collect::<Result<Vec<_>, Error>>()?;
 
-        debug!("new arrived");
-
-        for mut peer_info in store_peer_infos.into_iter() {
-            debug!("new arrived {}", peer_info.peer_id());
-
-            if !peer_store.contains(peer_info.peer_id()).await {
-                peer_info.set_connectedness(Connectedness::CanConnect);
-                peer_store.register(peer_info).await
-            } else {
-                let peer_id = peer_info.peer_id().to_owned();
-                if let Some(multiaddr) = peer_info.into_multiaddr() {
-                    peer_store.add_multiaddr(&peer_id, multiaddr).await
-                }
-            }
-        }
+        debug!("new arrived, register now");
+        peer_store.register(peer_pairs).await;
 
         evt_tx
             .try_send(Event::NewArrived)
@@ -244,7 +258,7 @@ impl ProtocolHandler for BootstrapProtocol {
 
                 tokio::spawn(async move {
                     if let Err(err) =
-                        Self::interval_publish_peers(Context::new(), &peer_store, &mut w_stream)
+                        Self::interval_publish_peers(Context::new(), peer_store, &mut w_stream)
                             .await
                     {
                         error!("publish peer {}", err);
@@ -278,9 +292,13 @@ impl ProtocolHandler for BootstrapProtocol {
             let mut evt_tx = self.evt_tx.clone();
 
             loop {
-                if let Err(err) =
-                    Self::new_arrived(Context::new(), &self.peer_store, &mut r_stream, &mut evt_tx)
-                        .await
+                if let Err(err) = Self::new_arrived(
+                    Context::new(),
+                    self.peer_store.deref(),
+                    &mut r_stream,
+                    &mut evt_tx,
+                )
+                .await
                 {
                     error!("{} new arrived: {}", our_id, err);
                     break;
