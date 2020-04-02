@@ -28,19 +28,52 @@ pub enum NetworkEvent {
     ClosedStream(Box<dyn Network>, Box<dyn Stream>),
 }
 
-#[derive(Debug, Display, PartialEq, Eq, Clone, Copy)]
-pub enum Connectedness {
-    #[display(fmt = "not connected before")]
-    NotConnected,
-    #[display(fmt = "connected")]
-    Connected,
-    #[display(fmt = "can connect")]
-    CanConnect,
-    #[display(fmt = "unable to connect")]
-    CannotConnect,
-}
-#[derive(Debug, Display, PartialEq, Eq, Clone, Copy)]
+const CONNECTEDNESS_MASK: usize = 0b1110;
 
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Display)]
+#[repr(usize)]
+pub enum Connectedness {
+    #[display(fmt = "not connected")]
+    NotConnected = 0 << 1,
+
+    #[display(fmt = "can connect")]
+    CanConnect = 1 << 1,
+
+    #[display(fmt = "connected")]
+    Connected = 2 << 1,
+
+    #[display(fmt = "unconnectable")]
+    CannotConnect = 3 << 1,
+
+    #[display(fmt = "connecting")]
+    Connecting = 4 << 1,
+}
+
+impl From<usize> for Connectedness {
+    fn from(src: usize) -> Connectedness {
+        use self::Connectedness::*;
+
+        debug_assert!(
+            src == NotConnected as usize
+                || src == CanConnect as usize
+                || src == Connected as usize
+                || src == CannotConnect as usize
+                || src == Connecting as usize
+        );
+
+        unsafe { ::std::mem::transmute(src) }
+    }
+}
+
+impl From<Connectedness> for usize {
+    fn from(src: Connectedness) -> usize {
+        let v = src as usize;
+        debug_assert!(v & CONNECTEDNESS_MASK == v);
+        v
+    }
+}
+
+#[derive(Debug, Display, PartialEq, Eq, Clone, Copy)]
 pub enum Direction {
     #[display(fmt = "inbound")]
     Inbound,
